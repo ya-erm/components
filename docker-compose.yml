@@ -1,0 +1,42 @@
+# Локальное окружение для разработки: только MinIO (S3).
+# База данных не нужна — все данные хранятся в S3.
+# Поднять:    docker-compose up -d
+# Остановить: docker-compose down   (данные сохраняются в томе)
+
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # веб-консоль MinIO
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Одноразовый контейнер: создаёт бакет, открывает публичное чтение только на public/*.
+  create_bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin; do
+        echo 'ждём minio...'; sleep 2;
+      done;
+      /usr/bin/mc mb -p local/components || true;
+      /usr/bin/mc anonymous set download local/components/public;
+      echo 'бакет components готов (публичен только префикс public/*)';
+      "
+
+volumes:
+  miniodata:

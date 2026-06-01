@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadOnlyPublicPrefix",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::ИМЯ_ВАШЕГО_БАКЕТА/public/*"
+    },
+    {
+      "Sid": "OwnerFullAccess",
+      "Effect": "Allow",
+      "Principal": { "CanonicalUser": "ВАШ_ИДЕНТИФИКАТОР_ПОЛЬЗОВАТЕЛЯ" },
+      "Action": "*",
+      "Resource": [
+        "arn:aws:s3:::ИМЯ_ВАШЕГО_БАКЕТА",
+        "arn:aws:s3:::ИМЯ_ВАШЕГО_БАКЕТА/*"
+      ]
+    },
+    {
+      "Sid": "AppServiceAccount",
+      "Effect": "Allow",
+      "Principal": { "CanonicalUser": "ИДЕНТИФИКАТОР_СЕРВИСНОГО_АККАУНТА" },
+      "Action": "*",
+      "Resource": [
+        "arn:aws:s3:::ИМЯ_ВАШЕГО_БАКЕТА",
+        "arn:aws:s3:::ИМЯ_ВАШЕГО_БАКЕТА/*"
+      ]
+    }
+  ]
+}

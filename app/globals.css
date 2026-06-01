@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/*
+ * Тема следует системным настройкам (prefers-color-scheme).
+ * Светлая палитра — по умолчанию, тёмная — в media-запросе.
+ * Все компоненты используют эти переменные через arbitrary-классы
+ * вида bg-[var(--color-surface)] / text-[var(--color-fg)].
+ */
+:root {
+  color-scheme: light dark;
+
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f1f4;
+  --color-border: #e2e4e9;
+  --color-muted: #6b7280;
+  --color-fg: #1b1c1f;
+  --color-accent: #6366f1;
+  --color-accent-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0a0a0b;
+    --color-surface: #16161a;
+    --color-surface-2: #1f1f25;
+    --color-border: #2a2a31;
+    --color-muted: #9a9aa6;
+    --color-fg: #ededf0;
+    --color-accent: #6366f1;
+    --color-accent-fg: #ffffff;
+  }
+}
+
+body {
+  /* min-height (а не height), чтобы body рос вместе с контентом —
+     иначе sticky-шапка «отлипает» после прокрутки на один экран. */
+  min-height: 100dvh;
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Утилита для обрезки текста в N строк */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
