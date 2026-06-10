@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { listComponents } from "@/lib/components-repo";
 import { ComponentGrid } from "@/components/ComponentGrid";
 import { AppHeader } from "@/components/AppHeader";
 import { GearIcon, PlusIcon } from "@/components/ui/Field";
+import { Spinner } from "@/components/ui/states";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +14,7 @@ export default async function ComponentsPage() {
   const ownerId = await currentUserId();
   if (!ownerId) redirect("/login");
 
-  const initial = await listComponents({ ownerId, page: 1 });
+  const initial = await listComponents({ ownerId, all: true });
 
   return (
     <>
@@ -41,7 +43,9 @@ export default async function ComponentsPage() {
       />
 
       <div className="mx-auto max-w-5xl px-4 py-5">
-        <ComponentGrid initial={initial} />
+        <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}>
+          <ComponentGrid initial={initial} />
+        </Suspense>
       </div>
     </>
   );

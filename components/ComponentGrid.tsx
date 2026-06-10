@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { ComponentDTO } from "@/lib/components-repo";
 import { COMPONENT_STATUSES, STATUS_LABELS } from "@/lib/schema";
 import { ComponentCard } from "@/components/ComponentCard";
-import { FilterIcon, Input, SearchIcon, Select } from "@/components/ui/Field";
+import { ChevronDownIcon, FilterIcon, Input, SearchIcon, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { CenterState, Spinner } from "@/components/ui/states";
 
@@ -13,30 +14,45 @@ type Page = { items: ComponentDTO[]; total: number; page: number; pageSize: numb
 type Facet = { value: string; count: number };
 type GroupBy = "none" | "type" | "tag";
 
+const DEFAULT_GROUP_BY: GroupBy = "type";
+const COLLAPSED_GROUPS_STORAGE_PREFIX = "components:collapsed-groups";
 const NO_TYPE = "Без типа";
 const NO_TAGS = "Без тегов";
 
 export function ComponentGrid({ initial }: { initial: Page }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Инициализируем фильтры из URL — восстанавливаются при навигации назад.
   const [items, setItems] = useState<ComponentDTO[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
   const [page, setPage] = useState(initial.page);
 
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("");
-  const [type, setType] = useState("");
-  const [tag, setTag] = useState("");
-  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [status, setStatus] = useState(() => searchParams.get("status") ?? "");
+  const [type, setType] = useState(() => searchParams.get("type") ?? "");
+  const [tag, setTag] = useState(() => searchParams.get("tag") ?? "");
+  const [groupBy, setGroupBy] = useState<GroupBy>(
+    () => parseGroupBy(searchParams.get("groupBy")),
+  );
 
-  // На мобильном панель фильтров скрыта по умолчанию (на десктопе видна всегда).
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const hasUrlFilters = Boolean(
+    searchParams.get("q") || searchParams.get("status") || searchParams.get("type") ||
+    searchParams.get("tag") || searchParams.get("groupBy"),
+  );
+
+  // На мобильном панель фильтров скрыта по умолчанию; открываем если уже есть активные.
+  const [filtersOpen, setFiltersOpen] = useState(hasUrlFilters);
   const activeFilters =
-    (status ? 1 : 0) + (type ? 1 : 0) + (tag ? 1 : 0) + (groupBy !== "none" ? 1 : 0);
+    (status ? 1 : 0) + (type ? 1 : 0) + (tag ? 1 : 0) + (groupBy !== DEFAULT_GROUP_BY ? 1 : 0);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [types, setTypes] = useState<Facet[]>([]);
   const [tags, setTags] = useState<Facet[]>([]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
   // Фасеты для выпадающих списков (типы и теги каталога).
   useEffect(() => {
@@ -53,6 +69,10 @@ export function ComponentGrid({ initial }: { initial: Page }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setCollapsedGroups(readCollapsedGroups(groupBy));
+  }, [groupBy]);
 
   const reqId = useRef(0);
 
@@ -95,22 +115,42 @@ export function ComponentGrid({ initial }: { initial: Page }) {
   );
 
   // Перезагрузка при изменении поиска/фильтров/режима группировки (с дебаунсом).
-  const isFirst = useRef(true);
+  // Если URL уже содержит фильтры при монтировании — isFirst=false, чтобы сразу загрузить.
+  const isFirst = useRef(!hasUrlFilters);
   useEffect(() => {
     if (isFirst.current) {
       isFirst.current = false;
       return;
     }
     const t = setTimeout(() => {
+      // Обновляем URL с replace (без записи в историю).
+      const params = new URLSearchParams();
+      if (query.trim()) params.set("q", query.trim());
+      if (status) params.set("status", status);
+      if (type) params.set("type", type);
+      if (tag) params.set("tag", tag);
+      if (groupBy !== DEFAULT_GROUP_BY) params.set("groupBy", groupBy);
+      const search = params.toString();
+      router.replace(search ? `${pathname}?${search}` : pathname, { scroll: false });
+      // Загружаем данные.
       load(groupBy === "none" ? { pageNum: 1 } : { all: true });
     }, 250);
     return () => clearTimeout(t);
-  }, [query, status, type, tag, groupBy, load]);
+  }, [query, status, type, tag, groupBy, load, pathname, router]);
 
   const hasMore = groupBy === "none" && items.length < total;
   const hasFilters = Boolean(query.trim() || status || type || tag);
 
   const grouped = groupItems(items, groupBy);
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      writeCollapsedGroups(groupBy, next);
+      return next;
+    });
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -206,8 +246,8 @@ export function ComponentGrid({ initial }: { initial: Page }) {
               className="py-2 text-sm"
             >
               <option value="none">Без группировки</option>
-              <option value="type">Группа: тип</option>
-              <option value="tag">Группа: тег</option>
+              <option value="type">Группировка по типу</option>
+              <option value="tag">Группировка по тегу</option>
             </Select>
           </div>
         </div>
@@ -261,15 +301,16 @@ export function ComponentGrid({ initial }: { initial: Page }) {
           ) : null}
         </>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
           {grouped.map((g) => (
-            <section key={g.key} className="flex flex-col gap-3">
-              <h2 className="flex items-baseline gap-2 text-sm font-semibold">
-                {g.key}
-                <span className="text-xs font-normal text-[var(--color-muted)]">{g.items.length}</span>
-              </h2>
-              <Grid items={g.items} />
-            </section>
+            <GroupSection
+              key={g.key}
+              groupBy={groupBy}
+              groupKey={g.key}
+              items={g.items}
+              collapsed={collapsedGroups.has(g.key)}
+              onToggle={() => toggleGroup(g.key)}
+            />
           ))}
           {loading ? <CenterState icon={<Spinner />} title="Загрузка…" /> : null}
         </div>
@@ -285,6 +326,48 @@ function Grid({ items }: { items: ComponentDTO[] }) {
         <ComponentCard key={item.id} item={item} />
       ))}
     </div>
+  );
+}
+
+function GroupSection({
+  groupBy,
+  groupKey,
+  items,
+  collapsed,
+  onToggle,
+}: {
+  groupBy: GroupBy;
+  groupKey: string;
+  items: ComponentDTO[];
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const contentId = groupContentId(groupBy, groupKey);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        aria-controls={contentId}
+        className="-mx-2 flex min-h-9 items-center gap-2 rounded-lg px-2 text-left transition hover:bg-[var(--color-surface-2)] cursor-pointer"
+      >
+        <ChevronDownIcon
+          className={clsx(
+            "size-4 shrink-0 text-[var(--color-muted)] transition-transform",
+            collapsed ? "-rotate-90" : "rotate-0",
+          )}
+        />
+        <span className="min-w-0 flex-1 truncate text-base font-semibold">{groupKey}</span>
+        <span className="shrink-0 text-sm font-normal text-[var(--color-muted)]">{items.length} шт.</span>
+      </button>
+      {collapsed ? null : (
+        <div id={contentId}>
+          <Grid items={items} />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -321,4 +404,44 @@ function groupItems(
       if (b.items.length !== a.items.length) return b.items.length - a.items.length;
       return a.key.localeCompare(b.key, "ru");
     });
+}
+
+function parseGroupBy(value: string | null): GroupBy {
+  if (value === "none" || value === "type" || value === "tag") return value;
+  return DEFAULT_GROUP_BY;
+}
+
+function collapsedGroupsStorageKey(groupBy: GroupBy): string | null {
+  if (groupBy === "none") return null;
+  return `${COLLAPSED_GROUPS_STORAGE_PREFIX}:${groupBy}`;
+}
+
+function readCollapsedGroups(groupBy: GroupBy): Set<string> {
+  const storageKey = collapsedGroupsStorageKey(groupBy);
+  if (!storageKey || typeof window === "undefined") return new Set();
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsedGroups(groupBy: GroupBy, collapsedGroups: Set<string>) {
+  const storageKey = collapsedGroupsStorageKey(groupBy);
+  if (!storageKey || typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(Array.from(collapsedGroups)));
+  } catch {}
+}
+
+function groupContentId(groupBy: GroupBy, groupKey: string): string {
+  return `component-group-${groupBy}-${encodeURIComponent(groupKey)}`;
 }
