@@ -1,4 +1,5 @@
 import { clsx } from "clsx";
+import type { ComponentProps, ReactNode } from "react";
 import { ComponentStatus, STATUS_LABELS } from "@/lib/schema";
 
 const STATUS_CLASS: Record<ComponentStatus, string> = {
@@ -12,21 +13,24 @@ const STATUS_CLASS: Record<ComponentStatus, string> = {
 
 export function StatusBadge({
   status,
+  children,
   className,
+  ...props
 }: {
   status?: ComponentStatus | null;
-  className?: string;
-}) {
+  children?: ReactNode;
+} & ComponentProps<"span">) {
   if (!status || !(status in STATUS_LABELS)) return null;
   return (
     <span
+      {...props}
       className={clsx(
         "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
         STATUS_CLASS[status],
         className,
       )}
     >
-      {STATUS_LABELS[status]}
+      {children ?? STATUS_LABELS[status]}
     </span>
   );
 }

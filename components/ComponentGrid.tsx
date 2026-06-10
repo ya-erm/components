@@ -319,11 +319,11 @@ export function ComponentGrid({ initial }: { initial: Page }) {
   );
 }
 
-function Grid({ items }: { items: ComponentDTO[] }) {
+function Grid({ items, hideType = false }: { items: ComponentDTO[]; hideType?: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {items.map((item) => (
-        <ComponentCard key={item.id} item={item} />
+        <ComponentCard key={item.id} item={item} hideType={hideType} />
       ))}
     </div>
   );
@@ -364,7 +364,7 @@ function GroupSection({
       </button>
       {collapsed ? null : (
         <div id={contentId}>
-          <Grid items={items} />
+          <Grid items={items} hideType={groupBy === "type"} />
         </div>
       )}
     </section>
