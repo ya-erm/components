@@ -5,6 +5,7 @@ import { currentUserId } from "@/lib/session";
 import { listComponents } from "@/lib/components-repo";
 import { ComponentGrid } from "@/components/ComponentGrid";
 import { AppHeader } from "@/components/AppHeader";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { GearIcon, PlusIcon } from "@/components/ui/Field";
 import { Spinner } from "@/components/ui/states";
 
@@ -42,11 +43,13 @@ export default async function ComponentsPage() {
         }
       />
 
-      <div className="mx-auto max-w-5xl px-4 py-5">
-        <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}>
-          <ComponentGrid initial={initial} />
-        </Suspense>
-      </div>
+      <PullToRefresh>
+        <div className="mx-auto max-w-5xl px-4 py-5">
+          <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}>
+            <ComponentGrid initial={initial} />
+          </Suspense>
+        </div>
+      </PullToRefresh>
     </>
   );
 }
