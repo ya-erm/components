@@ -26,8 +26,8 @@ export function DeleteComponentButton({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex flex-col items-start gap-1">
-      <Button variant="danger-outline" onClick={onDelete} disabled={deleting}>
+    <div className="flex flex-col gap-1">
+      <Button variant="danger-outline" onClick={onDelete} disabled={deleting} className="w-full">
         {deleting ? <Spinner /> : "Удалить"}
       </Button>
       {error ? <p className="text-sm text-red-400">{error}</p> : null}

@@ -239,8 +239,8 @@ export function ComponentForm({ id, initial, title, backHref }: Props) {
 
           {formError ? <p className="text-sm text-red-400">{formError}</p> : null}
 
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={saving}>
+          <div>
+            <Button type="submit" disabled={saving} className="w-full">
               {saving ? <Spinner /> : isEdit ? "Сохранить" : "Добавить"}
             </Button>
           </div>
