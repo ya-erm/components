@@ -146,7 +146,7 @@ function RefreshArrowIcon({
         strokeLinecap="round"
       />
       <path
-        d="M19.2 6.4v5h-5"
+        d="M20.6 6.4v5h-5"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
