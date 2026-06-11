@@ -53,3 +53,21 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.ptr-ios-spinner-segment-active {
+  animation: ptr-ios-spinner-fade 0.8s linear infinite;
+}
+
+@keyframes ptr-ios-spinner-fade {
+  0% {
+    opacity: 0.66;
+  }
+
+  60% {
+    opacity: 0.24;
+  }
+
+  100% {
+    opacity: 0.1;
+  }
+}
