@@ -44,7 +44,7 @@ export default async function ComponentsPage() {
       />
 
       <PullToRefresh>
-        <div className="mx-auto max-w-5xl px-4 py-5">
+        <div className="mx-auto max-w-5xl px-4 pb-5">
           <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}>
             <ComponentGrid initial={initial} />
           </Suspense>

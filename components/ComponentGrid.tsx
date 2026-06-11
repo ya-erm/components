@@ -153,8 +153,8 @@ export function ComponentGrid({ initial }: { initial: Page }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="sticky top-14 z-10 -mx-4 flex flex-col gap-2 bg-[var(--color-bg)]/90 px-4 py-2 backdrop-blur">
+    <div className="flex flex-col">
+      <div className="sticky top-[calc(env(safe-area-inset-top)+3.5rem)] z-10 -mx-4 flex flex-col gap-2 bg-[var(--color-bg)]/90 px-4 py-2 backdrop-blur">
         <div className="flex items-stretch gap-2">
           <div className="relative flex-1">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted)]" />

@@ -9,6 +9,7 @@ const REFRESH_HOLD_DISTANCE = 84;
 const MAX_PULL_DISTANCE = 142;
 const INDICATOR_RELOAD_DELAY = 420;
 const SPINNER_SEGMENTS = 8;
+const RESET_TRANSITION = "padding-top 300ms cubic-bezier(0.22, 1, 0.36, 1)";
 
 export function PullToRefresh({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<"idle" | "pulling" | "refreshing">("idle");
@@ -51,11 +52,17 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
       isPulling.current = false;
       startY.current = null;
       setPhase("idle");
+      setRootPaddingTransition(rootRef.current, true);
       setPullDistance(0);
     };
 
     const handleTouchStart = (event: TouchEvent) => {
-      if (refreshingRef.current || event.touches.length !== 1 || isFormControl(event.target)) {
+      if (
+        refreshingRef.current ||
+        event.touches.length !== 1 ||
+        !isTouchInsideRoot(rootRef.current, event.target) ||
+        isFormControl(event.target)
+      ) {
         startY.current = null;
         return;
       }
@@ -63,6 +70,8 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
       startY.current = getScrollTop() <= 0 ? event.touches[0].clientY : null;
       isPulling.current = false;
       setPhase("idle");
+      setRootPaddingTransition(rootRef.current, false);
+      setPullDistance(0, true);
     };
 
     const handleTouchMove = (event: TouchEvent) => {
@@ -81,14 +90,18 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!isPulling.current) {
-        isPulling.current = true;
-        setPhase("pulling");
-      }
       event.preventDefault();
 
       const dampedDistance = getElasticPullDistance(deltaY);
       pullDistanceRef.current = dampedDistance;
+
+      if (!isPulling.current) {
+        isPulling.current = true;
+        setPullDistance(dampedDistance, true);
+        setPhase("pulling");
+        return;
+      }
+
       setPullDistance(dampedDistance);
     };
 
@@ -107,16 +120,26 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
       resetPull();
     };
 
+    const resetOnPageInterruption = () => {
+      if (document.visibilityState === "hidden") resetPull();
+    };
+
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: false });
     window.addEventListener("touchend", handleTouchEnd);
     window.addEventListener("touchcancel", resetPull);
+    window.addEventListener("blur", resetPull);
+    window.addEventListener("pagehide", resetPull);
+    document.addEventListener("visibilitychange", resetOnPageInterruption);
 
     return () => {
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("touchend", handleTouchEnd);
       window.removeEventListener("touchcancel", resetPull);
+      window.removeEventListener("blur", resetPull);
+      window.removeEventListener("pagehide", resetPull);
+      document.removeEventListener("visibilitychange", resetOnPageInterruption);
     };
   }, []);
 
@@ -129,6 +152,7 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
       className="relative"
       style={
         {
+          paddingTop: "var(--ptr-content-y)",
           "--ptr-content-y": "0px",
           "--ptr-indicator-y": "0px",
           "--ptr-opacity": "0",
@@ -139,7 +163,7 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
       <div
         aria-hidden={!visible}
         className={clsx(
-          "pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center",
+          "pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center",
           phase === "pulling"
             ? "transition-opacity duration-100 ease-out"
             : "transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
@@ -151,17 +175,7 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
       >
         <IosActivityIndicator active={refreshing} />
       </div>
-      <div
-        className={clsx(
-          "will-change-transform",
-          phase === "pulling"
-            ? ""
-            : "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-        )}
-        style={{ transform: "translate3d(0, var(--ptr-content-y), 0)" }}
-      >
-        {children}
-      </div>
+      {children}
     </div>
   );
 }
@@ -194,7 +208,7 @@ function applyPullDistance(root: HTMLDivElement | null, distance: number) {
 
   const progress = Math.min(distance / TRIGGER_DISTANCE, 1);
   root.style.setProperty("--ptr-content-y", `${distance}px`);
-  root.style.setProperty("--ptr-indicator-y", `${Math.min(54, distance * 0.54)}px`);
+  root.style.setProperty("--ptr-indicator-y", `${Math.min(44, distance * 0.4)}px`);
   root.style.setProperty("--ptr-opacity", String(distance > 4 ? Math.min(1, distance / 28) : 0));
   root.style.setProperty("--ptr-progress", String(progress));
 
@@ -202,6 +216,11 @@ function applyPullDistance(root: HTMLDivElement | null, distance: number) {
     const segmentProgress = clamp(progress * SPINNER_SEGMENTS - index, 0, 1);
     root.style.setProperty(`--ptr-segment-${index}`, String(0.08 + segmentProgress * 0.58));
   }
+}
+
+function setRootPaddingTransition(root: HTMLDivElement | null, enabled: boolean) {
+  if (!root) return;
+  root.style.transition = enabled ? RESET_TRANSITION : "none";
 }
 
 function getElasticPullDistance(deltaY: number) {
@@ -219,6 +238,10 @@ function getScrollTop() {
 
 function isFormControl(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("input, textarea, select"));
+}
+
+function isTouchInsideRoot(root: HTMLDivElement | null, target: EventTarget | null) {
+  return root !== null && target instanceof Node && root.contains(target);
 }
 
 function clamp(value: number, min: number, max: number) {

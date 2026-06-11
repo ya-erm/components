@@ -32,14 +32,30 @@
   }
 }
 
+html,
+body {
+  background-color: var(--color-bg);
+}
+
 body {
   /* min-height (а не height), чтобы body рос вместе с контентом —
      иначе sticky-шапка «отлипает» после прокрутки на один экран. */
   min-height: 100dvh;
-  background-color: var(--color-bg);
   color: var(--color-fg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 30;
+  height: env(safe-area-inset-top);
+  background: var(--color-bg);
+  pointer-events: none;
 }
 
 * {
