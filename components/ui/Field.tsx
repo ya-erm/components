@@ -132,7 +132,7 @@ export function FilterIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
       <path
-        d="M3 5h14l-5.5 6v4l-3-2v-2L3 5z"
+        d="M3 4.5h14l-5.5 6.2v5.1l-3 1.4v-6.5L3 4.5z"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinejoin="round"
