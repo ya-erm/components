@@ -16,7 +16,7 @@ export function AppHeader({
   right?: ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-bg)]/85 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-bg)]/85 backdrop-blur before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:-z-10 before:h-24 before:bg-[linear-gradient(180deg,var(--color-bg),transparent)] before:content-['']">
       <div className="mx-auto grid h-14 max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 sm:px-4">
         <div className="flex min-w-0 items-center justify-start">{left}</div>
         <h1 className="truncate px-1 text-center text-base font-semibold">{title}</h1>
