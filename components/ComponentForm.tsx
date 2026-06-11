@@ -6,6 +6,7 @@ import {
   COMPONENT_STATUSES,
   COMPONENT_TYPES,
   ComponentData,
+  MAX_IMAGES,
   STATUS_LABELS,
   componentDataSchema,
 } from "@/lib/schema";
@@ -152,7 +153,10 @@ export function ComponentForm({ id, initial, title, backHref }: Props) {
       </Field>
 
       <div>
-        <p className="mb-1.5 text-sm font-medium text-[var(--color-muted)]">Фотографии</p>
+      <p className="mb-1.5 text-sm font-medium text-[var(--color-muted)]">
+        <span>Фотографии:&nbsp;</span>
+        <span className="text-[var(--color-muted)]">{images.length} шт</span>
+      </p>
         <ImageUploader value={images} onChange={setImages} />
         {errors.images ? <p className="mt-1.5 text-sm text-red-400">{errors.images}</p> : null}
       </div>

@@ -1,11 +1,15 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { ComponentDTO } from "@/lib/components-repo";
-import { COMPONENT_STATUSES, STATUS_LABELS } from "@/lib/schema";
+import { COMPONENT_STATUSES, STATUS_LABELS, mainImage } from "@/lib/schema";
 import { ComponentCard } from "@/components/ComponentCard";
+import { StatusBadge } from "@/components/StatusBadge";
 import { ChevronDownIcon, FilterIcon, Input, SearchIcon, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { CenterState, Spinner } from "@/components/ui/states";
@@ -13,13 +17,26 @@ import { CenterState, Spinner } from "@/components/ui/states";
 type Page = { items: ComponentDTO[]; total: number; page: number; pageSize: number };
 type Facet = { value: string; count: number };
 type GroupBy = "none" | "type" | "tag";
+type ViewMode = "grid" | "compact" | "list";
+type CollapsedGroupsByGroup = { type: string[]; tag: string[] };
+type CollapsibleGroupBy = Exclude<GroupBy, "none">;
 
 const DEFAULT_GROUP_BY: GroupBy = "type";
-const COLLAPSED_GROUPS_STORAGE_PREFIX = "components:collapsed-groups";
+const COLLAPSED_GROUPS_COOKIE_PREFIX = "components-collapsed-groups";
+const VIEW_MODE_COOKIE_NAME = "components-view-mode";
+const EMPTY_COLLAPSED_GROUPS = new Set<string>();
 const NO_TYPE = "Без типа";
 const NO_TAGS = "Без тегов";
 
-export function ComponentGrid({ initial }: { initial: Page }) {
+export function ComponentGrid({
+  initial,
+  initialViewMode,
+  initialCollapsedGroups,
+}: {
+  initial: Page;
+  initialViewMode: ViewMode;
+  initialCollapsedGroups: CollapsedGroupsByGroup;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -36,6 +53,7 @@ export function ComponentGrid({ initial }: { initial: Page }) {
   const [groupBy, setGroupBy] = useState<GroupBy>(
     () => parseGroupBy(searchParams.get("groupBy")),
   );
+  const [viewMode, setViewModeState] = useState<ViewMode>(initialViewMode);
 
   const hasUrlFilters = Boolean(
     searchParams.get("q") || searchParams.get("status") || searchParams.get("type") ||
@@ -52,7 +70,12 @@ export function ComponentGrid({ initial }: { initial: Page }) {
 
   const [types, setTypes] = useState<Facet[]>([]);
   const [tags, setTags] = useState<Facet[]>([]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [collapsedGroupsByGroup, setCollapsedGroupsByGroup] = useState<
+    Record<CollapsibleGroupBy, Set<string>>
+  >(() => ({
+    type: new Set(initialCollapsedGroups.type),
+    tag: new Set(initialCollapsedGroups.tag),
+  }));
 
   // Фасеты для выпадающих списков (типы и теги каталога).
   useEffect(() => {
@@ -70,11 +93,12 @@ export function ComponentGrid({ initial }: { initial: Page }) {
     };
   }, []);
 
-  useEffect(() => {
-    setCollapsedGroups(readCollapsedGroups(groupBy));
-  }, [groupBy]);
-
   const reqId = useRef(0);
+
+  const setViewMode = (next: ViewMode) => {
+    setViewModeState(next);
+    writeViewModeCookie(next);
+  };
 
   const buildParams = useCallback(
     (extra: Record<string, string>) => {
@@ -142,13 +166,19 @@ export function ComponentGrid({ initial }: { initial: Page }) {
   const hasFilters = Boolean(query.trim() || status || type || tag);
 
   const grouped = groupItems(items, groupBy);
+  const collapsedGroups =
+    groupBy === "none" ? EMPTY_COLLAPSED_GROUPS : collapsedGroupsByGroup[groupBy];
+
   const toggleGroup = (key: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
+    if (groupBy === "none") return;
+
+    const collapsedGroupBy = groupBy;
+    setCollapsedGroupsByGroup((prev) => {
+      const next = new Set(prev[collapsedGroupBy]);
       if (next.has(key)) next.delete(key);
       else next.add(key);
-      writeCollapsedGroups(groupBy, next);
-      return next;
+      writeCollapsedGroupsCookie(collapsedGroupBy, next);
+      return { ...prev, [collapsedGroupBy]: next };
     });
   };
 
@@ -168,6 +198,8 @@ export function ComponentGrid({ initial }: { initial: Page }) {
               className="pl-10"
             />
           </div>
+
+          <ViewModeSwitch value={viewMode} onChange={setViewMode} />
 
           {/* Переключатель панели фильтров — только на мобильном */}
           <button
@@ -291,7 +323,7 @@ export function ComponentGrid({ initial }: { initial: Page }) {
         )
       ) : groupBy === "none" ? (
         <>
-          <Grid items={items} />
+          <ComponentList items={items} viewMode={viewMode} />
           {hasMore ? (
             <div className="flex justify-center py-2">
               <Button variant="secondary" disabled={loading} onClick={() => load({ append: true, pageNum: page + 1 })}>
@@ -308,6 +340,7 @@ export function ComponentGrid({ initial }: { initial: Page }) {
               groupBy={groupBy}
               groupKey={g.key}
               items={g.items}
+              viewMode={viewMode}
               collapsed={collapsedGroups.has(g.key)}
               onToggle={() => toggleGroup(g.key)}
             />
@@ -319,13 +352,207 @@ export function ComponentGrid({ initial }: { initial: Page }) {
   );
 }
 
-function Grid({ items, hideType = false }: { items: ComponentDTO[]; hideType?: boolean }) {
+function ViewModeSwitch({
+  value,
+  onChange,
+}: {
+  value: ViewMode;
+  onChange: (value: ViewMode) => void;
+}) {
+  const options: { value: ViewMode; label: string; icon: (props: { className?: string }) => ReactNode }[] = [
+    { value: "grid", label: "Обычная сетка", icon: GridIcon },
+    { value: "compact", label: "Компактная сетка", icon: CompactGridIcon },
+    { value: "list", label: "Список", icon: ListIcon },
+  ];
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const selectedIndex = options.findIndex((option) => option.value === value);
+  const selected = options[selectedIndex] ?? options[0];
+  const CurrentIcon = selected.icon;
+
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setMobileOpen((open) => !open)}
+        aria-label={`Вид списка: ${selected.label}`}
+        aria-haspopup="menu"
+        aria-expanded={mobileOpen}
+        title={`Вид: ${selected.label}`}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)] sm:hidden"
+      >
+        <CurrentIcon className="size-5" />
+      </button>
+
+      {mobileOpen ? (
+        <div
+          role="menu"
+          aria-label="Выбрать вид списка"
+          className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg shadow-black/10 sm:hidden"
+        >
+          {options.map((option) => {
+            const Icon = option.icon;
+            const isSelected = value === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isSelected}
+                onClick={() => {
+                  onChange(option.value);
+                  setMobileOpen(false);
+                }}
+                className={clsx(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition",
+                  isSelected
+                    ? "bg-[var(--color-surface-2)] text-[var(--color-fg)]"
+                    : "text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]",
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {isSelected ? <CheckIcon className="size-4 shrink-0" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div
+        className="hidden h-11 shrink-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] sm:flex"
+        role="group"
+        aria-label="Вид списка"
+      >
+        {options.map((option) => {
+          const Icon = option.icon;
+          const isSelected = value === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              aria-label={option.label}
+              aria-pressed={isSelected}
+              title={option.label}
+              className={clsx(
+                "flex w-10 items-center justify-center border-r border-[var(--color-border)] transition last:border-r-0",
+                isSelected
+                  ? "bg-[var(--color-surface-2)] text-[var(--color-fg)]"
+                  : "text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]",
+              )}
+            >
+              <Icon className="size-4.5" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ComponentList({
+  items,
+  viewMode,
+  hideType = false,
+}: {
+  items: ComponentDTO[];
+  viewMode: ViewMode;
+  hideType?: boolean;
+}) {
+  if (viewMode === "list") return <TableList items={items} hideType={hideType} />;
+  return <Grid items={items} hideType={hideType} compact={viewMode === "compact"} />;
+}
+
+function Grid({
+  items,
+  hideType = false,
+  compact = false,
+}: {
+  items: ComponentDTO[];
+  hideType?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={compact
+        ? "grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"
+        : "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"}
+    >
       {items.map((item) => (
-        <ComponentCard key={item.id} item={item} hideType={hideType} />
+        <ComponentCard key={item.id} item={item} hideType={hideType} variant={compact ? "compact" : "default"} />
       ))}
     </div>
+  );
+}
+
+function TableList({ items, hideType = false }: { items: ComponentDTO[]; hideType?: boolean }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="hidden grid-cols-[1fr_8rem_8rem_6rem] gap-3 border-b border-[var(--color-border)] px-3 py-2 text-xs font-medium text-[var(--color-muted)] sm:grid">
+        <span>Компонент</span>
+        <span>{hideType ? "Теги" : "Тип"}</span>
+        <span>Статус</span>
+        <span className="text-right">Кол-во</span>
+      </div>
+      <div className="divide-y divide-[var(--color-border)]">
+        {items.map((item) => (
+          <TableListRow key={item.id} item={item} hideType={hideType} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TableListRow({ item, hideType = false }: { item: ComponentDTO; hideType?: boolean }) {
+  const img = mainImage(item.data);
+  const tags = item.data.tags ?? [];
+  const qty = formatQuantity(item.data.quantity);
+  const secondary = hideType
+    ? tags.slice(0, 2).join(", ") || "Без тегов"
+    : item.data.type || "Без типа";
+
+  return (
+    <Link
+      href={`/components/${item.id}`}
+      className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 transition hover:bg-[var(--color-surface-2)] active:opacity-80 sm:grid-cols-[1fr_8rem_8rem_6rem] sm:items-center"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-[var(--color-surface-2)]">
+          {img ? (
+            <Image
+              src={img}
+              alt={item.data.name}
+              fill
+              sizes="44px"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-lg text-[var(--color-muted)]">
+              📷
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium">{item.data.name}</div>
+          <div className="truncate text-xs text-[var(--color-muted)] sm:hidden">{secondary}</div>
+        </div>
+      </div>
+
+      <div className="hidden min-w-0 truncate text-sm text-[var(--color-muted)] sm:block">
+        {secondary}
+      </div>
+
+      <div className="hidden sm:block">
+        <StatusBadge status={item.data.status} />
+      </div>
+
+      <div className="flex flex-col items-end justify-center gap-1 sm:block sm:text-right">
+        <span className="text-sm tabular-nums">{qty}</span>
+        <span className="sm:hidden">
+          <StatusBadge status={item.data.status} className="text-[10px]" />
+        </span>
+      </div>
+    </Link>
   );
 }
 
@@ -333,12 +560,14 @@ function GroupSection({
   groupBy,
   groupKey,
   items,
+  viewMode,
   collapsed,
   onToggle,
 }: {
   groupBy: GroupBy;
   groupKey: string;
   items: ComponentDTO[];
+  viewMode: ViewMode;
   collapsed: boolean;
   onToggle: () => void;
 }) {
@@ -364,7 +593,7 @@ function GroupSection({
       </button>
       {collapsed ? null : (
         <div id={contentId}>
-          <Grid items={items} hideType={groupBy === "type"} />
+          <ComponentList items={items} hideType={groupBy === "type"} viewMode={viewMode} />
         </div>
       )}
     </section>
@@ -411,35 +640,77 @@ function parseGroupBy(value: string | null): GroupBy {
   return DEFAULT_GROUP_BY;
 }
 
-function collapsedGroupsStorageKey(groupBy: GroupBy): string | null {
-  if (groupBy === "none") return null;
-  return `${COLLAPSED_GROUPS_STORAGE_PREFIX}:${groupBy}`;
+function writeViewModeCookie(viewMode: ViewMode) {
+  if (typeof window === "undefined") return;
+  document.cookie = `${VIEW_MODE_COOKIE_NAME}=${viewMode}; Max-Age=31536000; Path=/; SameSite=Lax`;
 }
 
-function readCollapsedGroups(groupBy: GroupBy): Set<string> {
-  const storageKey = collapsedGroupsStorageKey(groupBy);
-  if (!storageKey || typeof window === "undefined") return new Set();
-
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return new Set(
-      Array.isArray(parsed)
-        ? parsed.filter((value): value is string => typeof value === "string")
-        : [],
-    );
-  } catch {
-    return new Set();
-  }
+function formatQuantity(qty: number | undefined): string {
+  return typeof qty === "number" ? `${qty} шт.` : "—";
 }
 
-function writeCollapsedGroups(groupBy: GroupBy, collapsedGroups: Set<string>) {
-  const storageKey = collapsedGroupsStorageKey(groupBy);
-  if (!storageKey || typeof window === "undefined") return;
+function GridIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M4 4h5v5H4zM11 4h5v5h-5zM4 11h5v5H4zM11 11h5v5h-5z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(Array.from(collapsedGroups)));
-  } catch {}
+function CompactGridIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M4 4h3v3H4zM8.5 4h3v3h-3zM13 4h3v3h-3zM4 8.5h3v3H4zM8.5 8.5h3v3h-3zM13 8.5h3v3h-3zM4 13h3v3H4zM8.5 13h3v3h-3zM13 13h3v3h-3z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ListIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M5 5h11M5 10h11M5 15h11M3 5h.01M3 10h.01M3 15h.01"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="m4.5 10.5 3.5 3.5 7.5-8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function collapsedGroupsCookieName(groupBy: CollapsibleGroupBy): string {
+  return `${COLLAPSED_GROUPS_COOKIE_PREFIX}-${groupBy}`;
+}
+
+function writeCollapsedGroupsCookie(groupBy: CollapsibleGroupBy, collapsedGroups: Set<string>) {
+  if (typeof window === "undefined") return;
+
+  const value = encodeURIComponent(JSON.stringify(Array.from(collapsedGroups)));
+  document.cookie = `${collapsedGroupsCookieName(groupBy)}=${value}; Max-Age=31536000; Path=/; SameSite=Lax`;
 }
 
 function groupContentId(groupBy: GroupBy, groupKey: string): string {
