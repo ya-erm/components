@@ -229,6 +229,23 @@ export function ImageUploader({
     setDeleteIndex(i);
   }
 
+  function downloadCurrentImage() {
+    if (viewerIndex == null) return;
+
+    const url = value[viewerIndex];
+    setOptionsOpen(false);
+    triggerDownload(`/api/images/download?url=${encodeURIComponent(url)}`);
+  }
+
+  function triggerDownload(href: string) {
+    const link = document.createElement("a");
+    link.href = href;
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+
   function clearProgrammaticViewerScroll() {
     programmaticViewerTarget.current = null;
     if (programmaticScrollReset.current) {
@@ -418,6 +435,12 @@ export function ImageUploader({
                   Переместить вправо
                 </MenuButton>
                 <MenuButton
+                  icon={<DownloadIcon className="size-4" />}
+                  onClick={downloadCurrentImage}
+                >
+                  Скачать
+                </MenuButton>
+                <MenuButton
                   icon={<TrashIcon className="size-4" />}
                   danger
                   onClick={() => requestDelete(viewerIndex!)}
@@ -567,6 +590,26 @@ function DotsIcon({ className }: { className?: string }) {
       <circle cx="5" cy="10" r="1.4" fill="currentColor" />
       <circle cx="10" cy="10" r="1.4" fill="currentColor" />
       <circle cx="15" cy="10" r="1.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+function DownloadIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M10 3.5v8m0 0 3-3m-3 3-3-3"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4.5 13.5v1.2a1.8 1.8 0 0 0 1.8 1.8h7.4a1.8 1.8 0 0 0 1.8-1.8v-1.2"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
