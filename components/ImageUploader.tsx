@@ -387,7 +387,16 @@ export function ImageUploader({
             gestureStartY.current = null;
           }}
         >
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
+          {optionsOpen ? (
+            <button
+              type="button"
+              aria-label="Закрыть меню действий"
+              className="absolute inset-0 z-30 cursor-default"
+              onClick={() => setOptionsOpen(false)}
+            />
+          ) : null}
+
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-40">
             <button
               type="button"
               onClick={closeViewer}
@@ -396,10 +405,6 @@ export function ImageUploader({
             >
               <CloseIcon className="size-5" />
             </button>
-
-            <div className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+1.25rem)] -translate-x-1/2 rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/80 backdrop-blur">
-              {viewerIndex! + 1}/{value.length}
-            </div>
 
             <button
               type="button"
@@ -413,27 +418,30 @@ export function ImageUploader({
 
             {optionsOpen ? (
               <div className="pointer-events-auto absolute right-[calc(env(safe-area-inset-right)+0.75rem)] top-[calc(env(safe-area-inset-top)+3.5rem)] w-56 overflow-hidden rounded-xl border border-white/10 bg-neutral-950/95 py-1 text-sm text-white shadow-2xl backdrop-blur">
-                <MenuButton
-                  icon={<StarIcon className="size-4" />}
-                  disabled={viewerIndex === 0}
-                  onClick={() => makeMain(viewerIndex!)}
-                >
-                  Сделать основным
-                </MenuButton>
-                <MenuButton
-                  icon={<ArrowLeftIcon className="size-4" />}
-                  disabled={!canGoPrev}
-                  onClick={() => move(viewerIndex!, -1)}
-                >
-                  Переместить влево
-                </MenuButton>
-                <MenuButton
-                  icon={<ArrowRightIcon className="size-4" />}
-                  disabled={!canGoNext}
-                  onClick={() => move(viewerIndex!, 1)}
-                >
-                  Переместить вправо
-                </MenuButton>
+                {viewerIndex !== 0 ? (
+                  <MenuButton
+                    icon={<StarIcon className="size-4" />}
+                    onClick={() => makeMain(viewerIndex!)}
+                  >
+                    Сделать основным
+                  </MenuButton>
+                ) : null}
+                {canGoPrev ? (
+                  <MenuButton
+                    icon={<ArrowLeftIcon className="size-4" />}
+                    onClick={() => move(viewerIndex!, -1)}
+                  >
+                    Переместить влево
+                  </MenuButton>
+                ) : null}
+                {canGoNext ? (
+                  <MenuButton
+                    icon={<ArrowRightIcon className="size-4" />}
+                    onClick={() => move(viewerIndex!, 1)}
+                  >
+                    Переместить вправо
+                  </MenuButton>
+                ) : null}
                 <MenuButton
                   icon={<DownloadIcon className="size-4" />}
                   onClick={downloadCurrentImage}
@@ -478,48 +486,53 @@ export function ImageUploader({
               </div>
             </div>
 
-            {value.length > 1 && canGoPrev ? (
-              <button
-                type="button"
-                onClick={() => goToViewerImage(-1)}
-                aria-label="Предыдущее фото"
-                className="absolute left-4 top-1/2 hidden size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20 sm:flex"
-              >
-                <ArrowLeftIcon className="size-5" />
-              </button>
-            ) : null}
+          </div>
 
-            {value.length > 1 && canGoNext ? (
-              <button
-                type="button"
-                onClick={() => goToViewerImage(1)}
-                aria-label="Следующее фото"
-                className="absolute right-4 top-1/2 hidden size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20 sm:flex"
-              >
-                <ArrowRightIcon className="size-5" />
-              </button>
-            ) : null}
+          <div className="z-20 flex shrink-0 items-center justify-center gap-3 px-4 pt-2">
+            <button
+              type="button"
+              onClick={() => goToViewerImage(-1)}
+              disabled={!canGoPrev}
+              aria-label="Предыдущее фото"
+              className="flex size-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
+            >
+              <ArrowLeftIcon className="size-5" />
+            </button>
+            <div className="inline-flex h-9 min-w-14 items-center justify-center rounded-full bg-white/10 px-3 text-center text-xs font-medium text-white/80 backdrop-blur">
+              {viewerIndex! + 1}/{value.length}
+            </div>
+            <button
+              type="button"
+              onClick={() => goToViewerImage(1)}
+              disabled={!canGoNext}
+              aria-label="Следующее фото"
+              className="flex size-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
+            >
+              <ArrowRightIcon className="size-5" />
+            </button>
           </div>
 
           {value.length > 1 ? (
             <div
               ref={viewerThumbsRef}
-              className="z-20 flex h-[calc(5rem+env(safe-area-inset-bottom))] shrink-0 gap-2 overflow-x-auto pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pl-[calc(env(safe-area-inset-left)+0.75rem)] pr-[calc(env(safe-area-inset-right)+0.75rem)] pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="z-20 h-[calc(5rem+env(safe-area-inset-bottom))] shrink-0 overflow-x-auto pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pl-[calc(env(safe-area-inset-left)+0.75rem)] pr-[calc(env(safe-area-inset-right)+0.75rem)] pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
-              {value.map((url, i) => (
-                <button
-                  key={`viewer-thumb-${url}-${i}`}
-                  type="button"
-                  data-viewer-thumb={i}
-                  onClick={() => selectViewerImage(i)}
-                  aria-label={`Перейти к фото ${i + 1}`}
-                  className={`relative aspect-square h-full shrink-0 overflow-hidden rounded-lg border transition ${
-                    i === viewerIndex ? "border-white opacity-100" : "border-white/20 opacity-55"
-                  }`}
-                >
-                  <Image src={url} alt="" fill sizes="64px" className="object-cover" />
-                </button>
-              ))}
+              <div className="flex h-full w-max min-w-full justify-center gap-2">
+                {value.map((url, i) => (
+                  <button
+                    key={`viewer-thumb-${url}-${i}`}
+                    type="button"
+                    data-viewer-thumb={i}
+                    onClick={() => selectViewerImage(i)}
+                    aria-label={`Перейти к фото ${i + 1}`}
+                    className={`relative aspect-square h-full shrink-0 overflow-hidden rounded-lg border transition ${
+                      i === viewerIndex ? "border-white opacity-100" : "border-white/20 opacity-55"
+                    }`}
+                  >
+                    <Image src={url} alt="" fill sizes="64px" className="object-cover" />
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>
