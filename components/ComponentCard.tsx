@@ -48,6 +48,7 @@ export function ComponentCard({
           <div className={compact ? "absolute left-1.5 top-1.5" : "absolute left-2 top-2"}>
             <StatusBadge
               status={item.data.status}
+              variant="overlay"
               aria-label={`${STATUS_LABELS[item.data.status]}: ${formatQuantity(qty)}`}
               title={`${STATUS_LABELS[item.data.status]}: ${formatQuantity(qty)}`}
               className={compact ? "gap-1 px-1 text-[10px] leading-4" : "gap-1.5 px-1.5"}
