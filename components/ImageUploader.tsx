@@ -27,6 +27,11 @@ export function ImageUploader({
   const shouldSyncViewerScroll = useRef(false);
   const programmaticViewerTarget = useRef<number | null>(null);
   const programmaticScrollReset = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewerDragY = useRef(0);
+  const viewerCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [viewerDragOffset, setViewerDragOffset] = useState(0);
+  const [viewerDragging, setViewerDragging] = useState(false);
+  const [viewerClosing, setViewerClosing] = useState(false);
 
   const viewerOpen = viewerIndex != null && value.length > 0;
   const canAdd = value.length < MAX_IMAGES;
@@ -81,7 +86,10 @@ export function ImageUploader({
   }, [viewerIndex]);
 
   useEffect(() => {
-    return () => clearProgrammaticViewerScroll();
+    return () => {
+      clearProgrammaticViewerScroll();
+      clearViewerCloseTimer();
+    };
   }, []);
 
   useEffect(() => {
@@ -178,6 +186,7 @@ export function ImageUploader({
 
   function openViewer(i: number) {
     shouldSyncViewerScroll.current = true;
+    resetViewerDrag();
     setViewerIndex(i);
   }
 
@@ -187,6 +196,31 @@ export function ImageUploader({
     gestureStartX.current = null;
     gestureStartY.current = null;
     clearProgrammaticViewerScroll();
+    clearViewerCloseTimer();
+    resetViewerDrag();
+  }
+
+  function closeViewerWithDragAnimation() {
+    setOptionsOpen(false);
+    setViewerDragging(false);
+    setViewerClosing(true);
+    setViewerDragOffset(Math.max(viewerDragY.current, window.innerHeight * 0.42, 260));
+    clearViewerCloseTimer();
+    viewerCloseTimer.current = setTimeout(() => closeViewer(), 180);
+  }
+
+  function resetViewerDrag() {
+    viewerDragY.current = 0;
+    setViewerDragOffset(0);
+    setViewerDragging(false);
+    setViewerClosing(false);
+  }
+
+  function clearViewerCloseTimer() {
+    if (viewerCloseTimer.current) {
+      clearTimeout(viewerCloseTimer.current);
+      viewerCloseTimer.current = null;
+    }
   }
 
   function scrollViewerToIndex(i: number, behavior: ScrollBehavior = "smooth") {
@@ -256,9 +290,28 @@ export function ImageUploader({
 
   function onViewerPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "mouse") return;
+    if (viewerClosing || optionsOpen) return;
     clearProgrammaticViewerScroll();
     gestureStartX.current = event.clientX;
     gestureStartY.current = event.clientY;
+    viewerDragY.current = 0;
+  }
+
+  function onViewerPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse") return;
+    if (viewerClosing || optionsOpen) return;
+    if (gestureStartX.current == null || gestureStartY.current == null) return;
+
+    const dx = event.clientX - gestureStartX.current;
+    const dy = event.clientY - gestureStartY.current;
+    if (dy <= 0) return;
+    if (!viewerDragging && (dy < 16 || dy < Math.abs(dx) * 1.15)) return;
+
+    event.preventDefault();
+    const nextOffset = Math.min(dy, window.innerHeight * 0.65);
+    viewerDragY.current = nextOffset;
+    setViewerDragging(true);
+    setViewerDragOffset(nextOffset);
   }
 
   function onViewerPointerUp(event: PointerEvent<HTMLDivElement>) {
@@ -270,9 +323,14 @@ export function ImageUploader({
     gestureStartX.current = null;
     gestureStartY.current = null;
 
-    if (dy > 90 && dy > Math.abs(dx) * 1.35) {
-      closeViewer();
+    if (viewerDragY.current > 110 || (dy > 90 && dy > Math.abs(dx) * 1.35)) {
+      closeViewerWithDragAnimation();
+      return;
     }
+
+    viewerDragY.current = 0;
+    setViewerDragging(false);
+    setViewerDragOffset(0);
   }
 
   function onViewerScroll() {
@@ -380,11 +438,24 @@ export function ImageUploader({
           aria-modal="true"
           aria-label="Просмотр фотографий"
           className="fixed inset-0 z-40 flex select-none flex-col bg-black/95 text-white"
+          style={{
+            opacity: Math.max(0.35, 1 - viewerDragOffset / 420),
+            transform: `translateY(${viewerDragOffset}px)`,
+            transition: viewerDragging
+              ? "none"
+              : viewerClosing
+                ? "transform 180ms ease, opacity 180ms ease"
+                : "transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 220ms ease",
+          }}
           onPointerDown={onViewerPointerDown}
+          onPointerMove={onViewerPointerMove}
           onPointerUp={onViewerPointerUp}
           onPointerCancel={() => {
             gestureStartX.current = null;
             gestureStartY.current = null;
+            viewerDragY.current = 0;
+            setViewerDragging(false);
+            setViewerDragOffset(0);
           }}
         >
           {optionsOpen ? (
