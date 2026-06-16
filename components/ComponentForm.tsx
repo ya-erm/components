@@ -27,6 +27,43 @@ type Props = {
   backHref: string;
 };
 
+type FormValues = {
+  name: string;
+  images: string[];
+  quantity: string;
+  status: string;
+  type: string;
+  tags: string[];
+  note: string;
+  url: string;
+};
+
+function toComponentPayload({
+  name,
+  images,
+  quantity,
+  status,
+  type,
+  tags,
+  note,
+  url,
+}: FormValues) {
+  return {
+    name,
+    images,
+    quantity: quantity === "" ? undefined : quantity,
+    status: status === "" ? undefined : status,
+    type: type === "" ? undefined : type,
+    tags,
+    note,
+    url,
+  };
+}
+
+function toSnapshot(payload: ReturnType<typeof toComponentPayload>) {
+  const parsed = componentDataSchema.safeParse(payload);
+  return JSON.stringify(parsed.success ? parsed.data : payload);
+}
 
 export function ComponentForm({ id, initial, title, backHref }: Props) {
   const router = useRouter();
@@ -46,6 +83,26 @@ export function ComponentForm({ id, initial, title, backHref }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const initialSnapshot = useMemo(
+    () =>
+      toSnapshot(
+        toComponentPayload({
+          name: initial?.name ?? "",
+          images: initial?.images ?? [],
+          quantity: initial?.quantity != null ? String(initial.quantity) : "",
+          status: initial?.status ?? "",
+          type: initial?.type ?? "",
+          tags: initial?.tags ?? [],
+          note: initial?.note ?? "",
+          url: initial?.url ?? "",
+        }),
+      ),
+    [initial],
+  );
+  const candidate = toComponentPayload({ name, images, quantity, status, type, tags, note, url });
+  const currentSnapshot = toSnapshot(candidate);
+  const hasChanges = currentSnapshot !== initialSnapshot;
 
   // Подсказки для типа и тегов из существующих значений каталога.
   const [typeSuggestions, setTypeSuggestions] = useState<string[]>([]);
@@ -73,19 +130,9 @@ export function ComponentForm({ id, initial, title, backHref }: Props) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!hasChanges || saving) return;
     setErrors({});
     setFormError(null);
-
-    const candidate = {
-      name,
-      images,
-      quantity: quantity === "" ? undefined : quantity,
-      status: status === "" ? undefined : status,
-      type: type === "" ? undefined : type,
-      tags,
-      note,
-      url,
-    };
 
     const parsed = componentDataSchema.safeParse(candidate);
     if (!parsed.success) {
@@ -132,7 +179,7 @@ export function ComponentForm({ id, initial, title, backHref }: Props) {
           <button
             type="submit"
             form={FORM_ID}
-            disabled={saving}
+            disabled={saving || !hasChanges}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-[var(--color-accent)] transition active:opacity-70 disabled:opacity-40"
           >
             {saving ? <Spinner className="size-4" /> : "Готово"}
@@ -248,7 +295,7 @@ export function ComponentForm({ id, initial, title, backHref }: Props) {
           {formError ? <p className="text-sm text-red-400">{formError}</p> : null}
 
           <div>
-            <Button type="submit" disabled={saving} className="w-full">
+            <Button type="submit" disabled={saving || !hasChanges} className="w-full">
               {saving ? <Spinner /> : isEdit ? "Сохранить" : "Добавить"}
             </Button>
           </div>
