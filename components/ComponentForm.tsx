@@ -158,11 +158,8 @@ export function ComponentForm({ id, initial, title, backHref }: Props) {
         return;
       }
       await res.json();
-      if (window.history.length > 1) {
-        router.back();
-        return;
-      }
       router.push(backHref);
+      router.refresh();
     } catch {
       setFormError("Сетевая ошибка. Попробуйте ещё раз.");
     } finally {
