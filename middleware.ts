@@ -6,5 +6,7 @@ export const { auth: middleware } = NextAuth(authConfig);
 
 export const config = {
   // Пропускаем статику, ассеты и сам эндпоинт авторизации; всё остальное проходит проверку.
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)"],
+  matcher: [
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)",
+  ],
 };
