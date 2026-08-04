@@ -29,6 +29,7 @@ export default async function ComponentsPage() {
     tag: parseCollapsedGroupsCookie(cookieStore.get(`${COLLAPSED_GROUPS_COOKIE_PREFIX}-tag`)?.value),
   };
   const initial = await listComponents({ ownerId, all: true });
+  const catalogVersion = `${initial.total}:${initial.items[0]?.updatedAt ?? "empty"}`;
 
   return (
     <>
@@ -60,6 +61,7 @@ export default async function ComponentsPage() {
         <div className="mx-auto max-w-5xl px-4 pb-5">
           <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}>
             <ComponentGrid
+              key={catalogVersion}
               initial={initial}
               initialViewMode={initialViewMode}
               initialCollapsedGroups={initialCollapsedGroups}
