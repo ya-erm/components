@@ -1,7 +1,7 @@
 import { clsx } from "clsx";
 import type { ComponentProps, ReactNode } from "react";
 
-const controlClass =
+export const controlClass =
   "w-full rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3.5 py-2.5 text-base outline-none transition focus:border-[var(--color-accent)] placeholder:text-[var(--color-muted)]";
 
 export function Label({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) {
