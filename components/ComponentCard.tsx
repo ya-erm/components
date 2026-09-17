@@ -36,12 +36,8 @@ export function ComponentCard({
             className="object-cover transition group-hover:scale-[1.03]"
           />
         ) : (
-          <div
-            className={compact
-              ? "flex h-full w-full items-center justify-center text-xl text-[var(--color-muted)]"
-              : "flex h-full w-full items-center justify-center text-3xl text-[var(--color-muted)]"}
-          >
-            📷
+          <div className="flex h-full w-full items-center justify-center">
+            <NoImageIcon className="size-[50%]" />
           </div>
         )}
         {item.data.status ? (
@@ -97,6 +93,25 @@ export function ComponentCard({
         ) : null}
       </div>
     </Link>
+  );
+}
+
+export function NoImageIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className={`text-[var(--color-border)] ${className ?? ""}`}
+    >
+      <rect x="7" y="7" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M9.5 7V4M12 7V4M14.5 7V4M9.5 17V20M12 17V20M14.5 17V20M7 9.5H4M7 12H4M7 14.5H4M17 9.5H20M17 12H20M17 14.5H20"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

@@ -93,6 +93,27 @@ export function ImageUploader({
   }, []);
 
   useEffect(() => {
+    function onPaste(event: ClipboardEvent) {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+
+      const files: File[] = [];
+      for (const item of items) {
+        if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+      if (files.length === 0) return;
+
+      event.preventDefault();
+      handleFiles(files);
+    }
+
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [value, uploading]);
+
+  useEffect(() => {
     if (viewerIndex == null) return;
 
     const selectedThumb = viewerThumbsRef.current?.querySelector(
@@ -105,11 +126,10 @@ export function ImageUploader({
     requestAnimationFrame(() => scrollViewerToIndex(viewerIndex, "auto"));
   }, [viewerIndex]);
 
-  async function handleFiles(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) return;
+  async function handleFiles(files: File[]) {
+    if (files.length === 0) return;
     setError(null);
 
-    const files = Array.from(fileList);
     if (value.length + files.length > MAX_IMAGES) {
       setError(`Максимум ${MAX_IMAGES} изображений`);
       return;
@@ -359,7 +379,7 @@ export function ImageUploader({
         accept={ACCEPT}
         multiple
         hidden
-        onChange={(e) => handleFiles(e.target.files)}
+        onChange={(e) => handleFiles(Array.from(e.target.files ?? []))}
       />
 
       <div className="h-32 overflow-x-auto rounded-xl sm:h-36">
