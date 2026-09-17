@@ -8,7 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import { ComponentDTO } from "@/lib/components-repo";
 import { COMPONENT_STATUSES, STATUS_LABELS, mainImage } from "@/lib/schema";
-import { ComponentCard } from "@/components/ComponentCard";
+import { ComponentCard, NoImageIcon } from "@/components/ComponentCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ChevronDownIcon, FilterIcon, Input, SearchIcon, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -527,8 +527,8 @@ function TableListRow({ item, hideType = false }: { item: ComponentDTO; hideType
               className="object-cover"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-lg text-[var(--color-muted)]">
-              📷
+            <div className="flex h-full w-full items-center justify-center">
+              <NoImageIcon className="size-[70%]" />
             </div>
           )}
         </div>

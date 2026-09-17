@@ -5,41 +5,14 @@
       <stop offset="0.52" stop-color="#6366F1"/>
       <stop offset="1" stop-color="#4F46E5"/>
     </linearGradient>
-    <linearGradient id="chip" x1="166" y1="154" x2="350" y2="368" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#27272A"/>
-      <stop offset="1" stop-color="#09090B"/>
-    </linearGradient>
   </defs>
 
   <rect width="512" height="512" fill="url(#background)"/>
 
-  <g fill="none" stroke="#EEF2FF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M116 174H84"/>
-    <path d="M116 228H72"/>
-    <path d="M116 284H72"/>
-    <path d="M116 338H84"/>
-    <path d="M396 174H428"/>
-    <path d="M396 228H440"/>
-    <path d="M396 284H440"/>
-    <path d="M396 338H428"/>
-    <path d="M174 116V84"/>
-    <path d="M228 116V72"/>
-    <path d="M284 116V72"/>
-    <path d="M338 116V84"/>
-    <path d="M174 396V428"/>
-    <path d="M228 396V440"/>
-    <path d="M284 396V440"/>
-    <path d="M338 396V428"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="32" stroke-linecap="round">
+    <path d="M202.7 149.3V85.3M256 149.3V85.3M309.3 149.3V85.3M202.7 362.7V426.7M256 362.7V426.7M309.3 362.7V426.7M149.3 202.7H85.3M149.3 256H85.3M149.3 309.3H85.3M362.7 202.7H426.7M362.7 256H426.7M362.7 309.3H426.7"/>
+    <rect x="149.3" y="149.3" width="213.3" height="213.3" rx="32"/>
   </g>
 
-  <rect x="116" y="116" width="280" height="280" rx="58" fill="url(#chip)" stroke="#FFFFFF" stroke-width="14"/>
-
-  <g fill="none" stroke="#A5B4FC" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M190 256h45l24-44h63"/>
-    <path d="M190 308h71l23-42h38"/>
-  </g>
-  <circle cx="190" cy="256" r="15" fill="#FFFFFF"/>
-  <circle cx="190" cy="308" r="15" fill="#FFFFFF"/>
-  <circle cx="322" cy="212" r="15" fill="#FFFFFF"/>
-  <circle cx="322" cy="266" r="15" fill="#FFFFFF"/>
+  <path d="M300.2 225A54 54 0 1 0 300.2 287" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round"/>
 </svg>
