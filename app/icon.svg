@@ -7,7 +7,7 @@
     </linearGradient>
   </defs>
 
-  <rect width="512" height="512" fill="url(#background)"/>
+  <rect width="512" height="512" rx="100" fill="url(#background)"/>
 
   <g fill="none" stroke="#FFFFFF" stroke-width="32" stroke-linecap="round">
     <path d="M202.7 149.3V85.3M256 149.3V85.3M309.3 149.3V85.3M202.7 362.7V426.7M256 362.7V426.7M309.3 362.7V426.7M149.3 202.7H85.3M149.3 256H85.3M149.3 309.3H85.3M362.7 202.7H426.7M362.7 256H426.7M362.7 309.3H426.7"/>
