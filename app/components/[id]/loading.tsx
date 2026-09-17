@@ -23,6 +23,17 @@ function LabelRow({ className }: { className: string }) {
   );
 }
 
+// Заголовок в шапке: строка — h-6 (line-height text-base), сам бар внутри
+// ниже и по центру, как у строчных букв — иначе бар из inline-block
+// прижимается к baseline и «уезжает» к верху строки, а не на уровень текста.
+function TitleBar() {
+  return (
+    <span className="mx-auto flex h-6 w-40 items-center justify-center">
+      <span className="h-5 w-full animate-pulse rounded bg-[var(--color-surface-2)]" />
+    </span>
+  );
+}
+
 // borderColor задаём инлайн-стилем: controlClass уже содержит свой
 // border-[var(--color-border)], а порядок Tailwind-утилит одного свойства
 // в className не гарантирует перекрытие — инлайн-стиль побеждает всегда.
@@ -54,7 +65,7 @@ export default function Loading() {
   return (
     <>
       <AppHeader
-        title={<LabelBar className="mx-auto h-4 w-40" />}
+        title={<TitleBar />}
         left={<BackLink href="/components" />}
         right={<LabelBar className="h-4 w-12" />}
       />
