@@ -9,19 +9,37 @@ import { BASE as buttonBase } from "@/components/ui/Button";
 // блоки, а не интерактивные (нерабочие) элементы формы.
 
 function LabelBar({ className }: { className: string }) {
-  return <span className={`inline-block h-3.5 animate-pulse rounded bg-[var(--color-surface-2)] ${className}`} />;
+  return <span className={`inline-block h-4 animate-pulse rounded bg-[var(--color-surface-2)] ${className}`} />;
 }
 
+// Оборачивает LabelBar так, чтобы строка занимала ровно ту же высоту (20px),
+// что и настоящий текстовый лейбл (text-sm, line-height 1.25rem) — иначе
+// более компактный бар «сплющивает» строку и всё, что ниже, съезжает вверх.
+function LabelRow({ className }: { className: string }) {
+  return (
+    <span className="mb-1.5 flex h-5 items-center">
+      <LabelBar className={className} />
+    </span>
+  );
+}
+
+// borderColor задаём инлайн-стилем: controlClass уже содержит свой
+// border-[var(--color-border)], а порядок Tailwind-утилит одного свойства
+// в className не гарантирует перекрытие — инлайн-стиль побеждает всегда.
+const noBorder = { borderColor: "var(--color-surface-2)" };
+
 function ControlBar({ className = "" }: { className?: string }) {
-  return <div className={`${controlClass} animate-pulse ${className}`}>&nbsp;</div>;
+  return (
+    <div className={`${controlClass} animate-pulse ${className}`} style={noBorder}>
+      &nbsp;
+    </div>
+  );
 }
 
 function FieldSkeleton({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div>
-      <span className="mb-1.5 block">
-        <LabelBar className={label} />
-      </span>
+      <LabelRow className={label} />
       {children}
       {hint ? (
         <p aria-hidden="true" className="mt-1.5 text-xs text-transparent select-none">
@@ -36,7 +54,7 @@ export default function Loading() {
   return (
     <>
       <AppHeader
-        title=""
+        title={<LabelBar className="mx-auto h-4 w-40" />}
         left={<BackLink href="/components" />}
         right={<LabelBar className="h-4 w-12" />}
       />
@@ -48,15 +66,14 @@ export default function Loading() {
           </FieldSkeleton>
 
           <div>
-            <span className="mb-1.5 block">
-              <LabelBar className="w-24" />
-            </span>
+            <LabelRow className="w-24" />
             <div className="h-32 overflow-x-auto rounded-xl sm:h-36">
               <ul className="flex h-full min-w-0 gap-2 pb-1">
                 {[0, 1, 2].map((i) => (
                   <li
                     key={i}
-                    className="relative aspect-square h-full shrink-0 animate-pulse overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
+                    className="relative aspect-square h-full shrink-0 animate-pulse overflow-hidden rounded-xl border bg-[var(--color-surface-2)]"
+                    style={noBorder}
                   />
                 ))}
               </ul>
@@ -86,14 +103,19 @@ export default function Loading() {
           </div>
 
           <FieldSkeleton label="w-16">
-            <div className={`${controlClass} min-h-24 animate-pulse resize-y`}>&nbsp;</div>
+            <div className={`${controlClass} min-h-24 animate-pulse resize-y`} style={noBorder}>
+              &nbsp;
+            </div>
           </FieldSkeleton>
 
           <div className={`${buttonBase} w-full animate-pulse bg-[var(--color-surface-2)]`}>&nbsp;</div>
         </div>
 
         <div aria-hidden="true" className="mt-5">
-          <div className={`${buttonBase} w-full animate-pulse border border-[var(--color-border)] bg-[var(--color-surface-2)]`}>
+          <div
+            className={`${buttonBase} w-full animate-pulse border bg-[var(--color-surface-2)]`}
+            style={noBorder}
+          >
             &nbsp;
           </div>
         </div>
