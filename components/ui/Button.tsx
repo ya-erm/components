@@ -15,7 +15,7 @@ const VARIANTS: Record<Variant, string> = {
     "border border-red-500/40 text-red-500 bg-transparent hover:bg-red-500/10 dark:text-red-400",
 };
 
-const BASE =
+export const BASE =
   "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none select-none";
 
 /** Классы кнопки для случаев, когда нужен не <button>/<Link>, а, например, <a download>. */

@@ -11,7 +11,7 @@ export function AppHeader({
   left,
   right,
 }: {
-  title: string;
+  title: ReactNode;
   left?: ReactNode;
   right?: ReactNode;
 }) {
