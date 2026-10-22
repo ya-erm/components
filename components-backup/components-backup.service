@@ -1,0 +1,28 @@
+[Unit]
+Description=Components S3 backup Telegram bot
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+User=components-backup
+Group=components-backup
+WorkingDirectory=/opt/components-backup
+EnvironmentFile=/opt/components-backup/.env
+ExecStart=/usr/bin/node /opt/components-backup/cli.mjs bot
+Restart=on-failure
+RestartSec=15
+# Остановка ожидает завершения текущей загрузки, не обрывая архив.
+TimeoutStopSec=45min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/components-backup/data
+MemoryMax=512M
+CPUQuota=50%
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
