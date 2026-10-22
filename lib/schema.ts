@@ -93,6 +93,26 @@ export const orderSchema = z.object({
   source: z.string().trim().min(1).max(100).default("Вручную"),
   store: optionalText(200),
   url: optionalUrl,
+  aliexpress: z
+    .object({
+      orderId: identifier,
+      exportedAt: z.string().datetime(),
+      date: z.string().optional(),
+      status: z.string().optional(),
+      total: z.string().optional(),
+      shipments: z
+        .array(
+          z.object({
+            trackingNumber: z.string(),
+            carrier: z.string().optional(),
+            status: z.string().optional(),
+            lastEvent: z.string().optional(),
+            lastEventTime: z.string().optional(),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
   comments: z.array(commentSchema).max(500).default([]),
   trackingNumbers: z
     .array(z.string().trim().min(1, "Укажите трек-номер").max(200))
@@ -138,6 +158,21 @@ export const purchaseSchema = z.object({
   orderId: identifier,
   quantity: count.optional(),
   status: z.enum([...PURCHASE_STATUSES, "unassigned"]),
+  aliexpress: z
+    .object({
+      orderId: identifier,
+      itemKey: z.string().min(1).max(2000),
+      ambiguous: z.boolean().optional(),
+      productUrl: optionalUrl,
+      sku: optionalText(1000),
+      unitsPerPack: count.positive(),
+      exportedAt: z.string().datetime(),
+      lastQuantity: count.optional(),
+      lastStatus: z.enum([...PURCHASE_STATUSES, "unassigned"]),
+      quantityOverride: z.boolean().optional(),
+      statusOverride: z.boolean().optional(),
+    })
+    .optional(),
 });
 export const usageSchema = z.object({
   id: identifier,

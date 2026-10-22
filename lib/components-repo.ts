@@ -1,5 +1,17 @@
 import { randomUUID } from "crypto";
-import { getJson, putJson } from "@/lib/s3";
+import {
+  getJson,
+  putJson,
+  getJsonVersioned,
+  putJsonConditional,
+} from "@/lib/s3";
+import {
+  AliConflictError,
+  aliExportSchema,
+  type AliSelection,
+  planAliImport,
+} from "./aliexpress";
+import type { z } from "zod";
 import {
   type ComponentData,
   type Logistics,
@@ -37,6 +49,40 @@ function catalogKey(ownerId: string) {
 
 export async function readCatalog(ownerId: string): Promise<Catalog> {
   return parseCatalog(await getJson<unknown>(catalogKey(ownerId)));
+}
+
+export async function applyAliImport(
+  ownerId: string,
+  data: z.infer<typeof aliExportSchema>,
+  selections: AliSelection[],
+  token: string,
+) {
+  const key = catalogKey(ownerId);
+  const stored = await getJsonVersioned<unknown>(key);
+  if (stored.value !== null && !stored.etag)
+    throw new AliConflictError(
+      "Хранилище не вернуло версию каталога. Изменения не записаны.",
+    );
+  const current = parseCatalog(stored.value);
+  const plan = planAliImport(current, data, selections);
+  if (plan.preview.token !== token)
+    throw new AliConflictError(
+      "Каталог изменился после предпросмотра. Проверьте обновлённое сравнение.",
+    );
+  if (JSON.stringify(current) !== JSON.stringify(plan.catalog)) {
+    try {
+      await putJsonConditional(key, plan.catalog, stored.etag);
+    } catch (error) {
+      const status = (error as { $metadata?: { httpStatusCode?: number } })
+        .$metadata?.httpStatusCode;
+      if (status === 412 || status === 409)
+        throw new AliConflictError(
+          "Каталог изменился во время сохранения. Повторите предпросмотр.",
+        );
+      throw error;
+    }
+  }
+  return plan.preview;
 }
 
 async function writeCatalog(

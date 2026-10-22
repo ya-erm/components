@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { ExportIcon, ImportIcon } from "@/components/ui/Field";
 import { Spinner } from "@/components/ui/states";
+import Link from "next/link";
 
 type Toast = { kind: "ok" | "error"; text: string } | null;
 
@@ -51,6 +52,7 @@ export function ImportExport() {
 
   return (
     <>
+      <Link href="/components/import/aliexpress" className={buttonClass("secondary", "text-sm")}>Импорт из AliExpress</Link>
       <a href="/api/components/export" className={buttonClass("secondary", "text-sm")}>
         <ExportIcon className="size-4" />
         Экспорт
