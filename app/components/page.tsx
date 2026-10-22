@@ -36,6 +36,7 @@ export default async function ComponentsPage() {
       <AppHeader
         title="Компоненты"
         left={
+          <div className="flex items-center gap-1">
           <Link
             href="/settings"
             aria-label="Настройки"
@@ -44,6 +45,8 @@ export default async function ComponentsPage() {
             <GearIcon className="size-5 shrink-0" />
             <span className="hidden sm:inline">Настройки</span>
           </Link>
+          <Link href="/projects" className="rounded-lg px-2 py-1.5 text-sm text-[var(--color-accent)]">Проекты</Link>
+          </div>
         }
         right={
           <Link

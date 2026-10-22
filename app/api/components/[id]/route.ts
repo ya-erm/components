@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/session";
-import { componentDataSchema } from "@/lib/schema";
+import { componentSaveSchema } from "@/lib/schema";
+import { CatalogValidationError } from "@/lib/catalog";
 import {
   deleteComponent,
   getComponent,
@@ -13,7 +14,8 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   const ownerId = await currentUserId();
-  if (!ownerId) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  if (!ownerId)
+    return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
   const { id } = await params;
   const item = await getComponent(ownerId, id);
@@ -23,7 +25,8 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PUT(req: Request, { params }: Params) {
   const ownerId = await currentUserId();
-  if (!ownerId) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  if (!ownerId)
+    return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
   const { id } = await params;
 
@@ -34,7 +37,7 @@ export async function PUT(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
   }
 
-  const parsed = componentDataSchema.safeParse(body);
+  const parsed = componentSaveSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Ошибка валидации", issues: parsed.error.flatten() },
@@ -42,14 +45,27 @@ export async function PUT(req: Request, { params }: Params) {
     );
   }
 
-  const updated = await updateComponent(ownerId, id, parsed.data);
-  if (!updated) return NextResponse.json({ error: "Не найдено" }, { status: 404 });
-  return NextResponse.json(updated);
+  try {
+    const updated = await updateComponent(
+      ownerId,
+      id,
+      parsed.data.data,
+      parsed.data.logistics,
+    );
+    if (!updated)
+      return NextResponse.json({ error: "Не найдено" }, { status: 404 });
+    return NextResponse.json(updated);
+  } catch (error) {
+    if (error instanceof CatalogValidationError)
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
+  }
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
   const ownerId = await currentUserId();
-  if (!ownerId) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  if (!ownerId)
+    return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
   const { id } = await params;
   const ok = await deleteComponent(ownerId, id);

@@ -6,10 +6,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
-import { ComponentDTO } from "@/lib/components-repo";
+import type { ComponentDTO } from "@/lib/components-repo";
 import { COMPONENT_STATUSES, STATUS_LABELS, mainImage } from "@/lib/schema";
 import { ComponentCard, NoImageIcon } from "@/components/ComponentCard";
-import { StatusBadge } from "@/components/StatusBadge";
+import { InventorySummary } from "@/components/InventorySummary";
 import { ChevronDownIcon, FilterIcon, Input, SearchIcon, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { CenterState, Spinner } from "@/components/ui/states";
@@ -491,8 +491,7 @@ function TableList({ items, hideType = false }: { items: ComponentDTO[]; hideTyp
       <div className="hidden grid-cols-[1fr_8rem_8rem_6rem] gap-3 border-b border-[var(--color-border)] px-3 py-2 text-xs font-medium text-[var(--color-muted)] sm:grid">
         <span>Компонент</span>
         <span>{hideType ? "Теги" : "Тип"}</span>
-        <span>Статус</span>
-        <span className="text-right">Кол-во</span>
+        <span className="col-span-2">Количество по состояниям</span>
       </div>
       <div className="divide-y divide-[var(--color-border)]">
         {items.map((item) => (
@@ -506,7 +505,6 @@ function TableList({ items, hideType = false }: { items: ComponentDTO[]; hideTyp
 function TableListRow({ item, hideType = false }: { item: ComponentDTO; hideType?: boolean }) {
   const img = mainImage(item.data);
   const tags = item.data.tags ?? [];
-  const qty = formatQuantity(item.data.quantity);
   const secondary = hideType
     ? tags.slice(0, 2).join(", ") || "Без тегов"
     : item.data.type || "Без типа";
@@ -542,15 +540,8 @@ function TableListRow({ item, hideType = false }: { item: ComponentDTO; hideType
         {secondary}
       </div>
 
-      <div className="hidden sm:block">
-        <StatusBadge status={item.data.status} />
-      </div>
-
-      <div className="flex flex-col items-end justify-center gap-1 sm:block sm:text-right">
-        <span className="text-sm tabular-nums">{qty}</span>
-        <span className="sm:hidden">
-          <StatusBadge status={item.data.status} className="text-[10px]" />
-        </span>
+      <div className="max-w-44 sm:col-span-2 sm:max-w-none">
+        <InventorySummary data={item.data} compact />
       </div>
     </Link>
   );
@@ -643,10 +634,6 @@ function parseGroupBy(value: string | null): GroupBy {
 function writeViewModeCookie(viewMode: ViewMode) {
   if (typeof window === "undefined") return;
   document.cookie = `${VIEW_MODE_COOKIE_NAME}=${viewMode}; Max-Age=31536000; Path=/; SameSite=Lax`;
-}
-
-function formatQuantity(qty: number | undefined): string {
-  return typeof qty === "number" ? `${qty} шт.` : "—";
 }
 
 function GridIcon({ className }: { className?: string }) {
