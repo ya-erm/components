@@ -8,25 +8,27 @@ export function ComponentCard({
   item,
   hideType = false,
   variant = "default",
+  onSelect,
+  readOnly = false,
+  newTab = false,
 }: {
   item: ComponentDTO;
   hideType?: boolean;
   variant?: "default" | "compact";
+  onSelect?: () => void;
+  readOnly?: boolean;
+  newTab?: boolean;
 }) {
   const img = mainImage(item.data);
   const hasNote = Boolean(item.data.note?.trim() || item.data.comments.length);
   const tags = item.data.tags ?? [];
   const compact = variant === "compact";
 
-  return (
-    <Link
-      href={`/components/${item.id}`}
-      className={
-        compact
-          ? "group flex flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] transition active:scale-[0.99]"
-          : "group flex flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition active:scale-[0.99]"
-      }
-    >
+  const className = compact
+    ? "group flex w-full flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-left transition active:scale-[0.99]"
+    : "group flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-left transition active:scale-[0.99]";
+  const content = (
+    <>
       <div className="relative aspect-square w-full bg-[var(--color-surface-2)]">
         {img ? (
           <Image
@@ -101,6 +103,28 @@ export function ComponentCard({
           </div>
         ) : null}
       </div>
+    </>
+  );
+  if (readOnly) return <div className={className}>{content}</div>;
+  if (onSelect)
+    return (
+      <button
+        type="button"
+        aria-label={`Выбрать ${item.data.name}`}
+        className={className}
+        onClick={onSelect}
+      >
+        {content}
+      </button>
+    );
+  return (
+    <Link
+      href={`/components/${item.id}`}
+      target={newTab ? "_blank" : undefined}
+      rel={newTab ? "noopener noreferrer" : undefined}
+      className={className}
+    >
+      {content}
     </Link>
   );
 }

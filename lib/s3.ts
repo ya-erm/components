@@ -1,4 +1,10 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, NoSuchKey } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  NoSuchKey,
+} from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 
 /**
@@ -45,7 +51,7 @@ const EXT_BY_TYPE: Record<string, string> = {
 };
 
 export function isAllowedImageType(type: string): boolean {
-  return type in EXT_BY_TYPE;
+  return Object.hasOwn(EXT_BY_TYPE, type);
 }
 
 /** Загружает один файл в S3 и возвращает публичный URL. */
@@ -78,14 +84,21 @@ export async function uploadImage(
  */
 export async function getJson<T>(key: string): Promise<T | null> {
   try {
-    const res = await client().send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+    const res = await client().send(
+      new GetObjectCommand({ Bucket: BUCKET, Key: key }),
+    );
     const body = await res.Body?.transformToString("utf-8");
     if (!body) return null;
     return JSON.parse(body) as T;
   } catch (e) {
-    if (e instanceof NoSuchKey || (e as { name?: string }).name === "NoSuchKey") return null;
+    if (e instanceof NoSuchKey || (e as { name?: string }).name === "NoSuchKey")
+      return null;
     // YC / MinIO могут вернуть 404 как generic S3ServiceException
-    if ((e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return null;
+    if (
+      (e as { $metadata?: { httpStatusCode?: number } }).$metadata
+        ?.httpStatusCode === 404
+    )
+      return null;
     throw e;
   }
 }
@@ -98,6 +111,42 @@ export async function putJson<T>(key: string, value: T): Promise<void> {
       Key: key,
       Body: JSON.stringify(value),
       ContentType: "application/json; charset=utf-8",
+    }),
+  );
+}
+
+/** Версия объекта для условной записи после предпросмотра импорта. */
+export async function getJsonVersioned<T>(
+  key: string,
+): Promise<{ value: T | null; etag?: string }> {
+  try {
+    const result = await client().send(
+      new GetObjectCommand({ Bucket: BUCKET, Key: key }),
+    );
+    const body = await result.Body?.transformToString("utf-8");
+    return { value: body ? (JSON.parse(body) as T) : null, etag: result.ETag };
+  } catch (error) {
+    if (
+      (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+        ?.httpStatusCode === 404
+    )
+      return { value: null };
+    throw error;
+  }
+}
+
+export async function putJsonConditional<T>(
+  key: string,
+  value: T,
+  etag?: string,
+): Promise<void> {
+  await client().send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      Body: JSON.stringify(value),
+      ContentType: "application/json; charset=utf-8",
+      ...(etag ? { IfMatch: etag } : { IfNoneMatch: "*" }),
     }),
   );
 }

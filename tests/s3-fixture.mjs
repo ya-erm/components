@@ -5,6 +5,11 @@
 //      S3_PUBLIC_URL=http://127.0.0.1:19000/components-test AUTH_URL=http://localhost:3000 pnpm dev
 import { createServer } from "node:http";
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
+const etag = (value) =>
+  value === undefined
+    ? undefined
+    : `"${createHash("md5").update(value).digest("hex")}"`;
 
 const user = {
   id: "fixture-demo",
@@ -35,24 +40,54 @@ const objects = new Map([
   ],
 ]);
 const contentTypes = new Map();
+let writeBehavior = { delayMs: 0, failWrites: 0 };
 createServer(async (req, res) => {
   const key = decodeURIComponent(
     new URL(req.url, "http://127.0.0.1:19000").pathname,
   );
+  if (key === "/__fixture/write-behavior" && req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    writeBehavior = {
+      delayMs: Math.max(0, Math.min(5000, Number(value.delayMs) || 0)),
+      failWrites: Math.max(0, Math.min(10, Number(value.failWrites) || 0)),
+    };
+    res.end("ok");
+    return;
+  }
   if (key === "/__fixture/catalog") {
     res.setHeader("Content-Type", "application/json");
     res.end(objects.get("/components-test/users/fixture-demo/catalog.json"));
     return;
   }
   if (req.method === "PUT") {
+    if (writeBehavior.delayMs)
+      await new Promise((resolve) => setTimeout(resolve, writeBehavior.delayMs));
+    if (writeBehavior.failWrites > 0) {
+      writeBehavior.failWrites -= 1;
+      res.writeHead(403, { "Content-Type": "application/xml" });
+      res.end("<Error><Code>AccessDenied</Code></Error>");
+      return;
+    }
+    if (
+      (req.headers["if-match"] &&
+        req.headers["if-match"] !== etag(objects.get(key))) ||
+      (req.headers["if-none-match"] === "*" && objects.has(key))
+    ) {
+      res.writeHead(412, { "Content-Type": "application/xml" });
+      res.end("<Error><Code>PreconditionFailed</Code></Error>");
+      return;
+    }
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     objects.set(key, Buffer.concat(chunks));
     contentTypes.set(key, req.headers["content-type"] ?? "application/octet-stream");
-    res.setHeader("ETag", '"fixture"');
+    res.setHeader("ETag", etag(objects.get(key)));
     res.end();
   } else if (req.method === "GET" && objects.has(key)) {
     res.setHeader("Content-Type", contentTypes.get(key) ?? "application/json");
+    res.setHeader("ETag", etag(objects.get(key)));
     res.end(objects.get(key));
   } else {
     res.writeHead(404, { "Content-Type": "application/xml" });

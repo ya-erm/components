@@ -11,7 +11,8 @@ export async function GET() {
   if (!ownerId)
     return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
-  const { items, orders, shipments, projects } = await readCatalog(ownerId);
+  const { items, orders, shipments, projects, legacyIgnoredOrders } =
+    await readCatalog(ownerId);
 
   const payload = {
     version: EXPORT_VERSION,
@@ -20,6 +21,7 @@ export async function GET() {
     orders,
     shipments,
     projects,
+    legacyIgnoredOrders,
     components: items.map((i) => ({ id: i.id, data: i.data })),
   };
 

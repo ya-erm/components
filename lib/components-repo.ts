@@ -1,5 +1,19 @@
 import { randomUUID } from "crypto";
-import { getJson, putJson } from "@/lib/s3";
+import {
+  getJson,
+  putJson,
+  getJsonVersioned,
+  putJsonConditional,
+} from "@/lib/s3";
+import {
+  AliConflictError,
+  AliImportError,
+  aliExportSchema,
+  type AliSelection,
+  planAliImport,
+} from "./aliexpress";
+import type { z } from "zod";
+import { copyNewComponentImages, removeUnusedImportImages } from "./import-images";
 import {
   type ComponentData,
   type Logistics,
@@ -37,6 +51,86 @@ function catalogKey(ownerId: string) {
 
 export async function readCatalog(ownerId: string): Promise<Catalog> {
   return parseCatalog(await getJson<unknown>(catalogKey(ownerId)));
+}
+
+export async function applyAliImport(
+  ownerId: string,
+  data: z.infer<typeof aliExportSchema>,
+  selections: AliSelection[],
+  token: string,
+) {
+  const key = catalogKey(ownerId);
+  const stored = await getJsonVersioned<unknown>(key);
+  if (stored.value !== null && !stored.etag)
+    throw new AliConflictError(
+      "Хранилище не вернуло версию каталога. Изменения не записаны.",
+    );
+  const current = parseCatalog(stored.value);
+  const plan = planAliImport(current, data, selections);
+  if (plan.preview.token !== token)
+    throw new AliConflictError(
+      "Каталог изменился после предпросмотра. Проверьте обновлённое сравнение.",
+    );
+  if (JSON.stringify(stored.value) !== JSON.stringify(plan.catalog)) {
+    const uploaded: string[] = [];
+    try {
+      await copyNewComponentImages(current, plan.catalog, ownerId, uploaded);
+      await putJsonConditional(key, plan.catalog, stored.etag);
+    } catch (error) {
+      if (uploaded.length) {
+        try {
+          await removeUnusedImportImages(uploaded, await readCatalog(ownerId));
+        } catch {
+          // Если каталог недоступен, оставляем файл: он может быть уже сохранён в карточке.
+        }
+      }
+      const status = (error as { $metadata?: { httpStatusCode?: number } })
+        .$metadata?.httpStatusCode;
+      if (status === 412 || status === 409)
+        throw new AliConflictError(
+          "Каталог изменился во время сохранения. Повторите предпросмотр.",
+        );
+      throw new AliImportError(error instanceof Error ? error.message : "Не удалось сохранить импорт.");
+    }
+  }
+  return plan.preview;
+}
+
+/** Удаляем старые исключения только после подтверждения записи в браузере. */
+export async function acknowledgeImportPreferences(
+  ownerId: string,
+  entries: { source: string; id: string }[],
+) {
+  const key = catalogKey(ownerId);
+  const acknowledged = new Set(entries.map((entry) =>
+    JSON.stringify([entry.source.toLowerCase(), entry.id]),
+  ));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const stored = await getJsonVersioned<unknown>(key);
+    if (stored.value !== null && !stored.etag)
+      throw new AliConflictError("Не удалось получить версию каталога");
+    const current = parseCatalog(stored.value);
+    const catalog = { ...current };
+    const remaining = current.legacyIgnoredOrders?.filter((entry) =>
+      !acknowledged.has(JSON.stringify([entry.source.toLowerCase(), entry.id])),
+    );
+    if (remaining?.length) catalog.legacyIgnoredOrders = remaining;
+    else delete catalog.legacyIgnoredOrders;
+    if (JSON.stringify(stored.value) === JSON.stringify(catalog)) return current;
+    try {
+      await putJsonConditional(key, catalog, stored.etag);
+      return catalog;
+    } catch (error) {
+      if (
+        ![409, 412].includes(
+          (error as { $metadata?: { httpStatusCode?: number } })
+            .$metadata?.httpStatusCode ?? 0,
+        )
+      )
+        throw error;
+    }
+  }
+  throw new AliConflictError("Каталог изменился. Повторите действие.");
 }
 
 async function writeCatalog(

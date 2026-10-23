@@ -35,7 +35,7 @@ export function parseCatalog(raw: unknown): Catalog {
   const catalog = catalogSchema.parse(
     Array.isArray(raw)
       ? { version: 2, items: raw }
-      : (raw ?? { version: 2, items: [] }),
+      : raw ?? { version: 2, items: [] },
   );
   return normalizeCatalog({ ...catalog, projects: catalog.projects ?? [] });
 }
@@ -177,6 +177,13 @@ export function mergeLogistics(catalog: Catalog, patch?: Logistics): Catalog {
     orders: merge(catalog.orders, patch.orders),
     shipments: merge(catalog.shipments, patch.shipments),
     projects: merge(catalog.projects, patch.projects ?? []),
+    ...(patch.legacyIgnoredOrders
+      ? {
+          legacyIgnoredOrders: [...new Map([
+            ...(catalog.legacyIgnoredOrders ?? []), ...patch.legacyIgnoredOrders,
+          ].map((entry) => [JSON.stringify([entry.source.toLowerCase(), entry.id]), entry])).values()],
+        }
+      : {}),
   };
 }
 

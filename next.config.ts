@@ -6,6 +6,8 @@ import type { NextConfig } from "next";
  */
 function imageRemotePatterns() {
   const patterns: NonNullable<NextConfig["images"]>["remotePatterns"] = [
+    { protocol: "https", hostname: "**.aliexpress-media.com" },
+    { protocol: "https", hostname: "**.alicdn.com" },
     // MinIO в docker-compose
     { protocol: "http", hostname: "localhost", port: "9000" },
     { protocol: "http", hostname: "127.0.0.1", port: "9000" },

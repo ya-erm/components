@@ -93,6 +93,17 @@ export const orderSchema = z.object({
   source: z.string().trim().min(1).max(100).default("Вручную"),
   store: optionalText(200),
   url: optionalUrl,
+  date: optionalText(4000),
+  sourceStatus: optionalText(4000),
+  totalText: optionalText(4000),
+  trackingDetails: z.array(z.object({
+    trackingNumber: identifier,
+    carrier: optionalText(4000),
+    status: optionalText(4000),
+    lastEvent: optionalText(4000),
+    lastEventTime: optionalText(4000),
+  })).max(100).optional(),
+  importState: z.object({ exportedAt: z.string().datetime() }).optional(),
   comments: z.array(commentSchema).max(500).default([]),
   trackingNumbers: z
     .array(z.string().trim().min(1, "Укажите трек-номер").max(200))
@@ -138,6 +149,19 @@ export const purchaseSchema = z.object({
   orderId: identifier,
   quantity: count.optional(),
   status: z.enum([...PURCHASE_STATUSES, "unassigned"]),
+  productUrl: optionalUrl,
+  variant: optionalText(1000),
+  unitsPerPack: count.positive().optional(),
+  importState: z
+    .object({
+      exportedAt: z.string().datetime(),
+      matchKey: z.string().min(1).max(8000).optional(),
+      needsManualMatch: z.boolean().optional(),
+      lastQuantity: count.optional(),
+      lastStatus: z.enum([...PURCHASE_STATUSES, "unassigned"]),
+      manualFields: z.array(z.enum(["quantity", "status"])).max(2).default([]),
+    })
+    .optional(),
 });
 export const usageSchema = z.object({
   id: identifier,
@@ -154,6 +178,8 @@ export const shipmentSchema = z.object({
   url: optionalUrl,
 });
 export const logisticsSchema = z.object({
+  // Удаляется после подтверждённого переноса старых исключений в браузер.
+  legacyIgnoredOrders: z.array(z.object({ source: identifier, id: identifier })).max(10000).optional(),
   orders: z.array(orderSchema).max(5000).default([]),
   shipments: z.array(shipmentSchema).max(5000).default([]),
   projects: z.array(projectSchema).max(5000).optional(),
