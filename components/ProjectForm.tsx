@@ -104,9 +104,6 @@ export function ProjectForm() {
             onChange={setImages}
             onUploadingChange={setUploading}
           />
-          <p className="mt-2 text-xs text-[var(--color-muted)]">
-            Первое фото — обложка карточки проекта.
-          </p>
         </div>
       </fieldset>
       {error ? (

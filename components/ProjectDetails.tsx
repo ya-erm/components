@@ -116,12 +116,12 @@ export function ProjectDetails({
                   type="button"
                   aria-label="Изменить название проекта"
                   onClick={() => setEditingName(true)}
-                  className="group flex w-full items-start gap-2 rounded-lg text-left"
+                  className="group flex w-full items-center gap-2 rounded-lg text-left"
                 >
                   <span className="min-w-0 break-words">
                     {name || "Название проекта"}
                   </span>
-                  <EditIcon className="mt-1 size-5 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-accent)]" />
+                  <EditIcon className="size-5 shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-accent)]" />
                 </button>
               </h1>
             )}
@@ -131,9 +131,6 @@ export function ProjectDetails({
                 onChange={setImages}
                 onUploadingChange={setUploading}
               />
-              <p className="mt-2 text-xs text-[var(--color-muted)]">
-                Первое фото — обложка карточки проекта.
-              </p>
             </div>
             <section
               aria-label="Описание проекта"
