@@ -10,9 +10,11 @@ const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/avif";
 export function ImageUploader({
   value,
   onChange,
+  onUploadingChange,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const viewerScrollerRef = useRef<HTMLDivElement>(null);
@@ -127,7 +129,7 @@ export function ImageUploader({
   }, [viewerIndex]);
 
   async function handleFiles(files: File[]) {
-    if (files.length === 0) return;
+    if (uploading || files.length === 0) return;
     setError(null);
 
     if (value.length + files.length > MAX_IMAGES) {
@@ -142,6 +144,7 @@ export function ImageUploader({
     }
 
     setUploading(true);
+    onUploadingChange?.(true);
     try {
       // Льём по одному файлу — на Vercel тело запроса ограничено ~4.5 МБ.
       const uploaded: string[] = [];
@@ -161,6 +164,7 @@ export function ImageUploader({
       setError(e instanceof Error ? e.message : "Ошибка загрузки");
     } finally {
       setUploading(false);
+      onUploadingChange?.(false);
       if (inputRef.current) inputRef.current.value = "";
     }
   }

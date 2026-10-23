@@ -34,6 +34,7 @@ const objects = new Map([
     ]),
   ],
 ]);
+const contentTypes = new Map();
 createServer(async (req, res) => {
   const key = decodeURIComponent(
     new URL(req.url, "http://127.0.0.1:19000").pathname,
@@ -46,11 +47,12 @@ createServer(async (req, res) => {
   if (req.method === "PUT") {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    objects.set(key, Buffer.concat(chunks).toString("utf8"));
+    objects.set(key, Buffer.concat(chunks));
+    contentTypes.set(key, req.headers["content-type"] ?? "application/octet-stream");
     res.setHeader("ETag", '"fixture"');
     res.end();
   } else if (req.method === "GET" && objects.has(key)) {
-    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Type", contentTypes.get(key) ?? "application/json");
     res.end(objects.get(key));
   } else {
     res.writeHead(404, { "Content-Type": "application/xml" });

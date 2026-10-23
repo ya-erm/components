@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { CommentsEditor } from "@/components/CommentsEditor";
 import { InventorySummary } from "@/components/InventorySummary";
+import { ProjectPicker } from "@/components/ProjectPicker";
 
 type Ledger = { purchases: Purchase[]; usages: Usage[] };
 export function logisticsPatch(
@@ -348,31 +349,29 @@ export function ComponentLedgerEditor({
                   Убрать
                 </button>
               </div>
-              <Field label="Проект" htmlFor={`usage-project-${usage.id}`}>
-                <Select
-                  id={`usage-project-${usage.id}`}
+              <Field label="Проект">
+                <ProjectPicker
+                  projects={logistics.projects ?? []}
                   value={usage.projectId}
-                  onChange={(event) => {
-                    if (event.target.value === "__new__") {
-                      const project = { id: crypto.randomUUID(), name: "" };
-                      onLogisticsChange({
-                        ...logistics,
-                        projects: [...(logistics.projects ?? []), project],
-                      });
-                      updateUsage(usage.id, { projectId: project.id });
-                    } else
-                      updateUsage(usage.id, { projectId: event.target.value });
+                  onChange={(id) => updateUsage(usage.id, { projectId: id })}
+                  onCreate={() => {
+                    const project = { id: crypto.randomUUID(), name: "" };
+                    onLogisticsChange({
+                      ...logistics,
+                      projects: [...(logistics.projects ?? []), project],
+                    });
+                    updateUsage(usage.id, { projectId: project.id });
                   }}
-                >
-                  <option value="">Выберите проект</option>
-                  {(logistics.projects ?? []).map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name || "Новый проект"}
-                    </option>
-                  ))}
-                  <option value="__new__">+ Новый проект</option>
-                </Select>
+                />
               </Field>
+              {project && !newProject ? (
+                <Link
+                  href={`/projects/${encodeURIComponent(project.id)}`}
+                  className="self-start text-sm text-[var(--color-accent)]"
+                >
+                  Открыть проект ↗
+                </Link>
+              ) : null}
               {newProject ? (
                 <Field
                   label="Название проекта"
