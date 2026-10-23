@@ -54,6 +54,20 @@ export function ChevronLeftIcon({ className }: { className?: string }) {
   );
 }
 
+export function ProjectsIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M2.5 6V4.5A1.5 1.5 0 0 1 4 3h4l2 3h6a1.5 1.5 0 0 1 1.5 1.5V15a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 15V6Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function GearIcon({ className }: { className?: string }) {
   return (
     <svg
