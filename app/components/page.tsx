@@ -49,7 +49,7 @@ export default async function ComponentsPage({ searchParams }: {
           <Link
             href="/settings"
             aria-label="Настройки"
-            className="-ml-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[var(--color-fg)] transition hover:bg-[var(--color-surface-2)] active:opacity-70"
+            className="-ml-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[var(--color-accent)] transition hover:bg-[var(--color-surface-2)] active:opacity-70"
           >
             <GearIcon className="size-5 shrink-0" />
             <span className="hidden sm:inline">Настройки</span>
@@ -78,9 +78,6 @@ export default async function ComponentsPage({ searchParams }: {
 
       <PullToRefresh>
         <div className="mx-auto max-w-5xl px-4 pb-5">
-          <div className="flex justify-end py-3">
-            <Link href="/components/import/aliexpress" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-accent)]">Импорт из AliExpress</Link>
-          </div>
           <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}>
             <ComponentGrid
               key={ownerId}
