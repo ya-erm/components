@@ -43,6 +43,7 @@ type Props = {
     logistics?: Logistics;
   }) => void | Promise<void>;
   onCancelDraft?: () => void;
+  onDraftChange?: (value: ComponentFormDraft) => void;
 };
 
 type FormValues = {
@@ -95,6 +96,11 @@ function toSnapshot(payload: {
   return JSON.stringify(parsed.success ? parsed.data : payload);
 }
 
+export type ComponentFormDraft = {
+  data: ReturnType<typeof toComponentPayload>;
+  logistics: Logistics;
+};
+
 export function ComponentForm({
   id,
   initial,
@@ -103,6 +109,7 @@ export function ComponentForm({
   backHref,
   onSaveDraft,
   onCancelDraft,
+  onDraftChange,
 }: Props) {
   const router = useRouter();
   const isEdit = Boolean(id);
@@ -162,6 +169,15 @@ export function ComponentForm({
   };
   const currentSnapshot = toSnapshot(candidate);
   const hasChanges = currentSnapshot !== initialSnapshot;
+
+  // Сохраняем также незавершённый ввод, до валидации кнопкой «Сохранить».
+  const draftSnapshot = onDraftChange
+    ? JSON.stringify({ data: candidate.data, logistics })
+    : null;
+  useEffect(() => {
+    if (draftSnapshot)
+      onDraftChange?.(JSON.parse(draftSnapshot) as ComponentFormDraft);
+  }, [draftSnapshot, onDraftChange]);
 
   // Подсказки для типа и тегов из существующих значений каталога.
   const [typeSuggestions, setTypeSuggestions] = useState<string[]>([]);

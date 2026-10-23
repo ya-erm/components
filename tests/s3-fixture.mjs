@@ -40,16 +40,36 @@ const objects = new Map([
   ],
 ]);
 const contentTypes = new Map();
+let writeBehavior = { delayMs: 0, failWrites: 0 };
 createServer(async (req, res) => {
   const key = decodeURIComponent(
     new URL(req.url, "http://127.0.0.1:19000").pathname,
   );
+  if (key === "/__fixture/write-behavior" && req.method === "POST") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    writeBehavior = {
+      delayMs: Math.max(0, Math.min(5000, Number(value.delayMs) || 0)),
+      failWrites: Math.max(0, Math.min(10, Number(value.failWrites) || 0)),
+    };
+    res.end("ok");
+    return;
+  }
   if (key === "/__fixture/catalog") {
     res.setHeader("Content-Type", "application/json");
     res.end(objects.get("/components-test/users/fixture-demo/catalog.json"));
     return;
   }
   if (req.method === "PUT") {
+    if (writeBehavior.delayMs)
+      await new Promise((resolve) => setTimeout(resolve, writeBehavior.delayMs));
+    if (writeBehavior.failWrites > 0) {
+      writeBehavior.failWrites -= 1;
+      res.writeHead(403, { "Content-Type": "application/xml" });
+      res.end("<Error><Code>AccessDenied</Code></Error>");
+      return;
+    }
     if (
       (req.headers["if-match"] &&
         req.headers["if-match"] !== etag(objects.get(key))) ||

@@ -5,7 +5,8 @@ import { AliExpressImport } from "@/components/AliExpressImport";
 
 export const dynamic = "force-dynamic";
 export default async function AliExpressImportPage() {
-  if (!(await currentUserId())) redirect("/login");
+  const ownerId = await currentUserId();
+  if (!ownerId) redirect("/login");
   return (
     <>
       <AppHeader
@@ -13,7 +14,7 @@ export default async function AliExpressImportPage() {
         left={<BackLink href="/components" />}
       />
       <main className="mx-auto max-w-4xl px-4 py-5">
-        <AliExpressImport />
+        <AliExpressImport key={ownerId} ownerId={ownerId} />
       </main>
     </>
   );

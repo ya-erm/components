@@ -107,6 +107,7 @@ export const aliSelectionSchema = z.object({
 export type AliSelection = z.infer<typeof aliSelectionSchema>;
 export type AliRow = {
   id: string;
+  itemKey: string;
   orderId: string;
   date: string;
   dateSort: string;
@@ -259,7 +260,7 @@ export function planAliVisibility(
     const row = rows.get(rowId);
     if (!row) throw new AliImportError("Товар не найден в выгрузке");
     const id = stableId("hidden", [row.order.order_id, row.key]);
-    if (hidden)
+    if (hidden && !ignored.has(id))
       ignored.set(id, {
         id,
         orderId: row.order.order_id,
@@ -267,7 +268,7 @@ export function planAliVisibility(
         title: row.item.title ?? "Без названия",
         createdAt: new Date().toISOString(),
       });
-    else ignored.delete(id);
+    else if (!hidden) ignored.delete(id);
   }
   return parseCatalog({ ...catalog, ignoredAliItems: [...ignored.values()] });
 }
@@ -537,6 +538,7 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
       }
       return {
         id: row.id,
+        itemKey: row.key,
         orderId: row.order.order_id,
         date: clean(row.order.date) ?? "Без даты",
         dateSort: orderDate(row.order.date),

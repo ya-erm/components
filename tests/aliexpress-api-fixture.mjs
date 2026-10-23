@@ -188,6 +188,37 @@ const restoreResponse = await req("/api/components/aliexpress", {
 assert.equal(restoreResponse.status, 200);
 assert.equal((await restoreResponse.json()).rows[0].ignored, false);
 
+// Возврат на страницу может повторить ещё выполняющийся запрос скрытия.
+const concurrentData = structuredClone(data);
+concurrentData.orders[0].items.push({
+  title: "Another fixture item",
+  product_url: "https://www.aliexpress.com/item/112234.html",
+  quantity: 1,
+});
+const concurrentRows = (await ali("analyze", undefined, undefined, concurrentData)).rows;
+const behaviorUrl = "http://127.0.0.1:19000/__fixture/write-behavior";
+await fetch(behaviorUrl, {
+  method: "POST",
+  body: JSON.stringify({ delayMs: 100 }),
+});
+try {
+  const responses = await Promise.all(concurrentRows.map((row) =>
+    req("/api/components/aliexpress", {
+      action: "hide", data: concurrentData, rowIds: [row.id],
+    }),
+  ));
+  for (const response of responses) assert.equal(response.status, 200);
+  const afterConcurrent = await ali("analyze", undefined, undefined, concurrentData);
+  assert.ok(afterConcurrent.rows.every((row) => row.ignored));
+  const repeat = await req("/api/components/aliexpress", {
+    action: "hide", data: concurrentData, rowIds: [concurrentRows[0].id],
+  });
+  assert.equal(repeat.status, 200);
+  assert.ok((await repeat.json()).rows.every((row) => row.ignored));
+} finally {
+  await fetch(behaviorUrl, { method: "POST", body: "{}" });
+}
+
 console.log(
-  "AliExpress API: analyze/preview are read-only; apply, exact replay, delivery update, stale preview 409, backup round trip and S3 conditional write passed.",
+  "AliExpress API: read-only analysis, apply, replay, delivery update, stale preview 409, backup, S3 conditional writes and concurrent idempotent hiding passed.",
 );

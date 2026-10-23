@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
@@ -16,6 +16,16 @@ import { Spinner } from "@/components/ui/states";
 import { ComponentCard } from "@/components/ComponentCard";
 import dynamic from "next/dynamic";
 import { AliImportPreview } from "@/components/AliImportPreview";
+import type { ComponentFormDraft } from "@/components/ComponentForm";
+import { useImportDraft } from "@/components/useImportDraft";
+import {
+  backImportStep,
+  finishImportStep,
+  pushImportStep,
+  restoreImportStep,
+  useImportHistory,
+  type ImportStep,
+} from "@/components/useImportHistory";
 
 const AliComponentWorkspace = dynamic(
   () =>
@@ -35,6 +45,11 @@ type Draft = {
   quantityEdited: boolean;
   statusEdited: boolean;
   componentDraft?: AliSelection["componentDraft"];
+};
+type VisibilityJob = {
+  rowIds: string[];
+  ignored: boolean;
+  previousSelected: Record<string, Draft>;
 };
 const KINDS = {
   new: "Новый",
@@ -57,7 +72,27 @@ function initialDraft(row: AliRow): Draft {
   };
 }
 
-export function AliExpressImport() {
+async function request<T>(
+  action: string,
+  source: unknown,
+  selections?: AliSelection[],
+  token?: string,
+  rowIds?: string[],
+): Promise<T> {
+  const response = await fetch("/api/components/aliexpress", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, data: source, selections, token, rowIds }),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new Error(
+      body?.error ?? "Не удалось выполнить импорт. Попробуйте ещё раз.",
+    );
+  return body;
+}
+
+export function AliExpressImport({ ownerId }: { ownerId: string }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
@@ -68,44 +103,103 @@ export function AliExpressImport() {
   const [kind, setKind] = useState("");
   const [since, setSince] = useState("");
   const [preview, setPreview] = useState<AliPreview | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   const [done, setDone] = useState<AliPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [pendingVisibility, setPendingVisibility] = useState<VisibilityJob[]>([]);
+  const visibilityInFlight = useRef(false);
   const [workspace, setWorkspace] = useState<{
     rowId: string;
     mode: "choose" | "new";
   } | null>(null);
-  const count = Object.keys(selected).length;
-
-  async function request<T>(
-    action: string,
-    source: unknown,
-    selections?: AliSelection[],
-    token?: string,
-    rowIds?: string[],
-  ): Promise<T> {
-    const response = await fetch("/api/components/aliexpress", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, data: source, selections, token, rowIds }),
-    });
-    const body = await response.json();
-    if (!response.ok)
-      throw new Error(body.error ?? "Не удалось выполнить импорт");
-    return body;
+  const [formDrafts, setFormDrafts] = useState<
+    Record<string, ComponentFormDraft>
+  >({});
+  const draftSnapshot = useMemo(
+    () => analysis && !done ? {
+      fileName, data, analysis, selected, query, kind, since, preview,
+      showPreview, done, workspace, formDrafts, pendingVisibility,
+    } : null,
+    [fileName, data, analysis, selected, query, kind, since, preview,
+      showPreview, done, workspace, formDrafts, pendingVisibility],
+  );
+  const { ready, storageError, savedAt } = useImportDraft(
+    `aliexpress-import:v1:${ownerId}`,
+    draftSnapshot,
+    (saved) => {
+      if (!saved || !Array.isArray(saved.analysis?.rows) || !saved.selected)
+        return;
+      setFileName(saved.fileName);
+      setData(saved.data);
+      setAnalysis(saved.analysis);
+      setSelected(saved.selected);
+      setQuery(saved.query);
+      setKind(saved.kind);
+      setSince(saved.since);
+      setPreview(saved.preview);
+      setShowPreview(saved.showPreview);
+      setDone(saved.done);
+      setWorkspace(saved.workspace);
+      setFormDrafts(saved.formDrafts ?? {});
+      setPendingVisibility(saved.pendingVisibility ?? []);
+      restoreImportStep(
+        saved.workspace ?? (saved.showPreview && saved.preview ? "preview" : null),
+      );
+    },
+  );
+  const followHistory = useCallback((step: ImportStep | null) => {
+    setWorkspace(step && step !== "preview" ? step : null);
+    setShowPreview(step === "preview");
+  }, []);
+  useImportHistory(followHistory);
+  const workspaceRowId = workspace?.rowId;
+  const rememberForm = useCallback(
+    (value: ComponentFormDraft) => {
+      if (!workspaceRowId) return;
+      setFormDrafts((previous) => ({ ...previous, [workspaceRowId]: value }));
+    },
+    [workspaceRowId],
+  );
+  function closeStep() {
+    if (!backImportStep()) {
+      finishImportStep();
+      followHistory(null);
+    }
   }
+  useEffect(() => {
+    const job = pendingVisibility[0];
+    if (!ready || !job || visibilityInFlight.current) return;
+    visibilityInFlight.current = true;
+    void request<AliAnalysis>(
+      job.ignored ? "hide" : "restore", data, undefined, undefined, job.rowIds,
+    )
+      .then(setAnalysis)
+      .catch((err: unknown) => {
+        setSelected((previous) => ({ ...job.previousSelected, ...previous }));
+        setError(
+          `Не удалось сохранить исключение. Изменение видимости отменено. ${err instanceof Error ? err.message : "Попробуйте ещё раз."}`,
+        );
+      })
+      .finally(() => {
+        visibilityInFlight.current = false;
+        setPendingVisibility((previous) => previous.slice(1));
+      });
+  }, [ready, pendingVisibility, data]);
+  const displayRows = analysis?.rows.map((row) => {
+    const job = pendingVisibility.findLast(
+      (entry) => entry.rowIds.includes(row.id),
+    );
+    return job ? { ...row, ignored: job.ignored } : row;
+  }) ?? [];
+  const savingVisibility = pendingVisibility.length > 0;
+  const count = Object.keys(selected).length;
 
   async function load(file: File) {
     setBusy(true);
     setError("");
-    setPreview(null);
-    setDone(null);
-    setSelected({});
-    setAnalysis(null);
-    setData(null);
-    setQuery("");
-    setKind("");
-    setSince("");
+    setNotice("");
     try {
       if (file.size > 4 * 1024 * 1024)
         throw new Error("Файл слишком большой. Максимум 4 МБ.");
@@ -116,6 +210,7 @@ export function AliExpressImport() {
         throw new Error("Файл не является корректным JSON");
       }
       const result = await request<AliAnalysis>("analyze", source);
+      resetDraft();
       setData(source);
       setAnalysis(result);
       setFileName(file.name);
@@ -125,6 +220,24 @@ export function AliExpressImport() {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
     }
+  }
+
+  function resetDraft() {
+    setFileName("");
+    setPreview(null);
+    setShowPreview(false);
+    setDone(null);
+    setFormDrafts({});
+    setWorkspace(null);
+    finishImportStep();
+    setSelected({});
+    setAnalysis(null);
+    setData(null);
+    setQuery("");
+    setKind("");
+    setSince("");
+    setError("");
+    setNotice("");
   }
 
   function choose(rows: AliRow[], checked: boolean) {
@@ -144,8 +257,10 @@ export function AliExpressImport() {
       [id]: { ...previous[id], ...patch },
     }));
   }
-  function selections(): AliSelection[] {
-    return Object.entries(selected).map(([rowId, draft]) => ({
+  function selections(rowIds?: string[]): AliSelection[] {
+    return Object.entries(selected)
+      .filter(([id]) => !rowIds || rowIds.includes(id))
+      .map(([rowId, draft]) => ({
       rowId,
       componentId: draft.componentId || undefined,
       purchaseId: draft.purchaseId || undefined,
@@ -174,7 +289,9 @@ export function AliExpressImport() {
       );
       return;
     }
-    setWorkspace({ rowId, mode });
+    const step = { rowId, mode };
+    pushImportStep(step);
+    setWorkspace(step);
   }
   async function review(event: React.FormEvent) {
     event.preventDefault();
@@ -190,6 +307,8 @@ export function AliExpressImport() {
           "Заполните карточку нового компонента или выберите существующий компонент для каждого товара.",
         );
       setPreview(await request<AliPreview>("preview", data, selections()));
+      pushImportStep("preview");
+      setShowPreview(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка предпросмотра");
@@ -198,31 +317,51 @@ export function AliExpressImport() {
     }
   }
 
-  async function visibility(row: AliRow) {
+  function visibility(row: AliRow) {
+    setError("");
+    const rowIds = displayRows
+      .filter((item) => item.id === row.id || (
+        row.itemKey && item.orderId === row.orderId && item.itemKey === row.itemKey
+      ))
+      .map((item) => item.id);
+    const previousSelected = Object.fromEntries(
+      Object.entries(selected).filter(([id]) => rowIds.includes(id)),
+    );
+    setPendingVisibility((previous) => [
+      ...previous, { rowIds, ignored: !row.ignored, previousSelected },
+    ]);
+    if (!row.ignored) setSelected((previous) => Object.fromEntries(
+      Object.entries(previous).filter(([id]) => !rowIds.includes(id)),
+    ));
+  }
+
+  async function applyRow(row: AliRow) {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      const result = await request<AliAnalysis>(
-        row.ignored ? "restore" : "hide",
-        data,
-        undefined,
-        undefined,
-        [row.id],
+      const choice = selections([row.id]);
+      const planned = await request<AliPreview>("preview", data, choice);
+      const result = await request<AliPreview>(
+        "apply", data, choice, planned.token,
       );
-      setAnalysis(result);
-      setSelected((previous) =>
-        Object.fromEntries(
-          Object.entries(previous).filter(
-            ([id]) => !result.rows.find((item) => item.id === id)?.ignored,
-          ),
-        ),
+      setSelected((previous) => Object.fromEntries(
+        Object.entries(previous).filter(([id]) => id !== row.id),
+      ));
+      setFormDrafts((previous) => Object.fromEntries(
+        Object.entries(previous).filter(([id]) => id !== row.id),
+      ));
+      setPreview(null);
+      setNotice(
+        `Сохранено: ${result.changes[0]?.name ?? row.title}. Остальные товары остались в черновике.`,
       );
+      try {
+        setAnalysis(await request<AliAnalysis>("analyze", data));
+      } catch {
+        setError("Товар сохранён, но обновить список не удалось. Повторная загрузка JSON обновит привязки.");
+      }
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Не удалось изменить видимость товара",
-      );
+      setError(err instanceof Error ? err.message : "Не удалось сохранить товар");
     } finally {
       setBusy(false);
     }
@@ -240,12 +379,17 @@ export function AliExpressImport() {
       );
       setDone(result);
       setPreview(null);
+      setShowPreview(false);
+      setFormDrafts({});
+      finishImportStep();
       setSelected({});
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка сохранения");
       // Повторная запись возможна только после нового предпросмотра.
       setPreview(null);
+      setShowPreview(false);
+      finishImportStep();
       try {
         setAnalysis(await request<AliAnalysis>("analyze", data));
       } catch {
@@ -257,7 +401,7 @@ export function AliExpressImport() {
   }
 
   const filtered =
-    analysis?.rows.filter(
+    displayRows.filter(
       (row) =>
         (kind === "hidden"
           ? row.ignored
@@ -268,10 +412,12 @@ export function AliExpressImport() {
             .join(" ")
             .toLowerCase()
             .includes(query.trim().toLowerCase())),
-    ) ?? [];
+    );
   const groups = new Map<string, AliRow[]>();
   for (const row of filtered)
     groups.set(row.orderId, [...(groups.get(row.orderId) ?? []), row]);
+
+  if (!ready) return <p role="status">Восстанавливаю импорт…</p>;
 
   return (
     <div className="flex flex-col gap-5">
@@ -288,7 +434,9 @@ export function AliExpressImport() {
               : Number(selected[workspace.rowId].quantity)
           }
           status={selected[workspace.rowId].status}
-          onClose={() => setWorkspace(null)}
+          formDraft={formDrafts[workspace.rowId]}
+          onFormChange={rememberForm}
+          onClose={closeStep}
           onChoose={(item) => {
             setAnalysis((previous) =>
               previous
@@ -322,7 +470,7 @@ export function AliExpressImport() {
                 : previous,
             );
             edit(workspace.rowId, { componentId: item.id, purchaseId: "" });
-            setWorkspace(null);
+            closeStep();
           }}
           onDraft={(value, source) => {
             const current = selected[workspace.rowId];
@@ -339,7 +487,7 @@ export function AliExpressImport() {
               statusEdited:
                 current.statusEdited || source.status !== current.status,
             });
-            setWorkspace(null);
+            closeStep();
           }}
         />
       ) : null}
@@ -347,13 +495,51 @@ export function AliExpressImport() {
         Загрузите выгрузку заказов, выберите нужные товары и проверьте
         изменения. Сохранённые привязки подставятся при следующем импорте.
       </p>
+      {analysis && !done ? (
+        <section
+          aria-label="Черновик импорта"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+        >
+          <div className="min-w-0 text-sm">
+            <p className="font-medium">Черновик импорта</p>
+            <p className="text-xs text-[var(--color-muted)]">
+              {savedAt && !storageError
+                ? `Сохранён в этом браузере · ${new Date(savedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`
+                : "Сохраняю в браузере…"}
+            </p>
+            <p className="mt-1 text-xs text-[var(--color-muted)]">
+              Можно уйти и продолжить позже. Компоненты сохранятся после подтверждения.
+            </p>
+          </div>
+          {savingVisibility ? (
+            <p role="status" className="text-xs text-[var(--color-muted)]">
+              Сохраняю исключения…
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy || savingVisibility}
+            onClick={resetDraft}
+          >
+            Удалить черновик
+          </Button>
+        </section>
+      ) : null}
+      {storageError ? (
+        <p role="alert" className="text-sm text-red-500">
+          Браузер не смог сохранить черновик. Не закрывайте страницу до
+          завершения импорта.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <Button
           variant="secondary"
-          disabled={busy}
+          disabled={busy || savingVisibility}
           onClick={() => fileInput.current?.click()}
         >
-          {busy ? <Spinner /> : null}Загрузить JSON AliExpress
+          {busy ? <Spinner /> : null}
+          {analysis ? "Заменить JSON AliExpress" : "Загрузить JSON AliExpress"}
         </Button>
         {fileName ? (
           <span className="min-w-0 break-all text-xs text-[var(--color-muted)]">
@@ -372,12 +558,22 @@ export function AliExpressImport() {
           }}
         />
       </div>
+      {analysis && !done ? (
+        <p className="text-xs text-[var(--color-muted)]">
+          Загрузка другого файла начнёт новый черновик без выбранных товаров.
+        </p>
+      ) : null}
       {error ? (
         <p
           role="alert"
           className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500"
         >
           {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p role="status" className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+          {notice}
         </p>
       ) : null}
       {done ? (
@@ -428,11 +624,11 @@ export function AliExpressImport() {
             Вернуться к заказам
           </Button>
         </section>
-      ) : preview ? (
+      ) : preview && showPreview ? (
         <AliImportPreview
           preview={preview}
           busy={busy}
-          onBack={() => setPreview(null)}
+          onBack={closeStep}
           onApply={() => void apply()}
         />
       ) : analysis ? (
@@ -455,7 +651,7 @@ export function AliExpressImport() {
                 >
                   <option value="">Все позиции</option>
                   <option value="hidden">
-                    Скрытые ({analysis.rows.filter((row) => row.ignored).length}
+                    Скрытые ({displayRows.filter((row) => row.ignored).length}
                     )
                   </option>
                   {Object.entries(KINDS).map(([key, label]) => (
@@ -791,6 +987,16 @@ export function AliExpressImport() {
                                 ))}
                               </ul>
                             ) : null}
+                            <Button
+                              type="button"
+                              disabled={
+                                busy || savingVisibility ||
+                                (!draft.componentId && !draft.componentDraft)
+                              }
+                              onClick={() => void applyRow(row)}
+                            >
+                              Применить этот товар
+                            </Button>
                           </div>
                         ) : null}
                       </div>
@@ -814,7 +1020,7 @@ export function AliExpressImport() {
                   </button>
                 ) : null}
               </div>
-              <Button type="submit" disabled={busy || count === 0}>
+              <Button type="submit" disabled={busy || savingVisibility || count === 0}>
                 {busy ? <Spinner /> : null}Проверить изменения
               </Button>
             </div>

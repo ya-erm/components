@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 
-import { ComponentForm } from "@/components/ComponentForm";
+import {
+  ComponentForm, type ComponentFormDraft,
+} from "@/components/ComponentForm";
 import { ComponentGrid } from "@/components/ComponentGrid";
 import { AppHeader } from "@/components/AppHeader";
 import { ImportWorkspace } from "@/components/ImportWorkspace";
@@ -58,6 +60,8 @@ export function AliComponentWorkspace({
   onChoose,
   onDraft,
   onClose,
+  formDraft,
+  onFormChange,
 }: {
   row: AliRow;
   analysis: AliAnalysis;
@@ -71,8 +75,11 @@ export function AliComponentWorkspace({
     source: Purchase,
   ) => void;
   onClose: () => void;
+  formDraft?: ComponentFormDraft;
+  onFormChange: (value: ComponentFormDraft) => void;
 }) {
   const [preferences] = useState(cataloguePreferences);
+  const [savedForm] = useState(formDraft);
   const sourceId = `ali-source-${row.id}`;
   const sourceOrder = componentDraft?.logistics?.orders.find(
     (order) => order.id === sourceId,
@@ -85,7 +92,7 @@ export function AliComponentWorkspace({
     comments: [],
     trackingNumbers: row.trackingNumbers,
   };
-  const initialLogistics: Logistics = {
+  const initialLogistics: Logistics = savedForm?.logistics ?? {
     ...analysis.logistics,
     orders: [
       ...analysis.logistics.orders,
@@ -106,7 +113,7 @@ export function AliComponentWorkspace({
       ),
     ],
   };
-  const initial = componentDataSchema.parse({
+  const initial = savedForm?.data ?? componentDataSchema.parse({
     name:
       row.title === "Без названия"
         ? "Новый компонент"
@@ -167,6 +174,7 @@ export function AliComponentWorkspace({
           title="Новый компонент"
           backHref="/components/import/aliexpress"
           onCancelDraft={onClose}
+          onDraftChange={onFormChange}
           onSaveDraft={(value) => {
             const source = value.data.purchases?.find(
               (purchase) => purchase.id === sourceId,

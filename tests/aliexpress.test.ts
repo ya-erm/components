@@ -62,6 +62,24 @@ function firstSelection(data = source(), catalog = empty()): AliSelection {
   return { rowId: analyzeAli(catalog, data).rows[0].id, unitsPerPack: 10 };
 }
 
+test("individual goods can be applied sequentially to one component without touching the rest", () => {
+  const data = source();
+  const rows = analyzeAli(empty(), data).rows;
+  const first = planAliImport(empty(), data, [{ rowId: rows[0].id, unitsPerPack: 1 }]);
+  assert.equal(first.catalog.items.length, 1);
+  const componentId = first.catalog.items[0].id;
+  assert.equal(first.catalog.items[0].data.purchases?.length, 1);
+  const nextChoice = [{ rowId: rows[1].id, componentId, unitsPerPack: 1 }];
+  const second = planAliImport(first.catalog, data, nextChoice);
+  assert.equal(second.catalog.items.length, 1);
+  assert.equal(second.catalog.items[0].data.purchases?.length, 2);
+  const bindings = analyzeAli(second.catalog, data).rows;
+  assert.equal(bindings[0].binding?.componentId, componentId);
+  assert.equal(bindings[1].binding?.componentId, componentId);
+  assert.equal(bindings[2].binding, undefined);
+  assert.equal(planAliImport(second.catalog, data, nextChoice).preview.unchanged, 1);
+});
+
 test("full component draft preserves metadata, images, comments, purchases and project usage", () => {
   const data = source();
   const selection = firstSelection(data);
@@ -144,6 +162,7 @@ test("ignored goods stay hidden across uploads, source reorder and catalog expor
     initial = empty();
   const row = analyzeAli(initial, data).rows[0];
   const hidden = planAliVisibility(initial, data, [row.id], true);
+  assert.deepEqual(planAliVisibility(hidden, data, [row.id], true), hidden);
   assert.equal(initial.ignoredAliItems, undefined);
   assert.equal(hidden.items.length, 0);
   const restoredCatalog = parseCatalog(JSON.parse(JSON.stringify(hidden)));

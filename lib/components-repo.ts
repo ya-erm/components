@@ -93,28 +93,31 @@ export async function setAliVisibility(
   hidden: boolean,
 ) {
   const key = catalogKey(ownerId);
-  const stored = await getJsonVersioned<unknown>(key);
-  if (stored.value !== null && !stored.etag)
-    throw new AliConflictError("Не удалось получить версию каталога");
-  const catalog = planAliVisibility(
-    parseCatalog(stored.value),
-    data,
-    rowIds,
-    hidden,
-  );
-  try {
-    await putJsonConditional(key, catalog, stored.etag);
-  } catch (error) {
+  // Повтор после возврата на страницу может совпасть с ещё выполняющейся записью.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const stored = await getJsonVersioned<unknown>(key);
+    if (stored.value !== null && !stored.etag)
+      throw new AliConflictError("Не удалось получить версию каталога");
+    const current = parseCatalog(stored.value);
+    const catalog = planAliVisibility(current, data, rowIds, hidden);
     if (
-      [409, 412].includes(
-        (error as { $metadata?: { httpStatusCode?: number } }).$metadata
-          ?.httpStatusCode ?? 0,
+      JSON.stringify(current.ignoredAliItems ?? []) ===
+      JSON.stringify(catalog.ignoredAliItems ?? [])
+    ) return current;
+    try {
+      await putJsonConditional(key, catalog, stored.etag);
+      return catalog;
+    } catch (error) {
+      if (
+        ![409, 412].includes(
+          (error as { $metadata?: { httpStatusCode?: number } })
+            .$metadata?.httpStatusCode ?? 0,
+        )
       )
-    )
-      throw new AliConflictError("Каталог изменился. Повторите действие.");
-    throw error;
+        throw error;
+    }
   }
-  return catalog;
+  throw new AliConflictError("Каталог изменился. Повторите действие.");
 }
 
 async function writeCatalog(
