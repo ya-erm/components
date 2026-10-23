@@ -95,7 +95,8 @@ export const orderSchema = z.object({
   url: optionalUrl,
   aliexpress: z
     .object({
-      orderId: identifier,
+      // Только для чтения прежних каталогов; новый импорт использует order.number.
+      orderId: identifier.optional(),
       exportedAt: z.string().datetime(),
       date: z.string().optional(),
       status: z.string().optional(),
@@ -160,7 +161,6 @@ export const purchaseSchema = z.object({
   status: z.enum([...PURCHASE_STATUSES, "unassigned"]),
   aliexpress: z
     .object({
-      orderId: identifier,
       itemKey: z.string().min(1).max(2000),
       ambiguous: z.boolean().optional(),
       productUrl: optionalUrl,

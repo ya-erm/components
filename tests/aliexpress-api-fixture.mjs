@@ -219,6 +219,40 @@ try {
   await fetch(behaviorUrl, { method: "POST", body: "{}" });
 }
 
+// Уже существующая покупка находится через обычные номер и источник заказа.
+const existingData = structuredClone(data);
+existingData.orders[0].order_id = `existing-number-${runId}`;
+const existingOrderId = `existing-order-${runId}`;
+const existingPurchaseId = `existing-purchase-${runId}`;
+const manualCreated = await req("/api/components", {
+  data: {
+    name: "Existing board by order number",
+    purchases: [{ id: existingPurchaseId, orderId: existingOrderId, quantity: 2, status: "in_transit" }],
+  },
+  logistics: {
+    orders: [{ id: existingOrderId, number: existingData.orders[0].order_id, source: "AliExpress" }],
+    shipments: [],
+  },
+});
+assert.equal(manualCreated.status, 201);
+const manualPart = await manualCreated.json();
+const byNumber = await ali("analyze", undefined, undefined, existingData);
+assert.equal(byNumber.rows[0].binding.componentId, manualPart.id);
+const byNumberChoices = [{ rowId: byNumber.rows[0].id, unitsPerPack: 1 }];
+const byNumberPreview = await ali("preview", byNumberChoices, undefined, existingData);
+assert.equal(byNumberPreview.created, 0);
+await ali("apply", byNumberChoices, byNumberPreview.token, existingData);
+const savedByNumber = await (await req(`/api/components/${manualPart.id}`)).json();
+assert.equal(savedByNumber.data.purchases.length, 1);
+assert.equal(savedByNumber.data.purchases[0].id, existingPurchaseId);
+assert.equal("orderId" in savedByNumber.data.purchases[0].aliexpress, false);
+const numberBackup = await (await req("/api/components/export")).json();
+const ownOrder = numberBackup.orders.find((order) => order.id === existingOrderId);
+assert.equal(ownOrder.number, existingData.orders[0].order_id);
+assert.equal("orderId" in ownOrder.aliexpress, false);
+assert.equal((await req("/api/components/import", numberBackup)).status, 200);
+assert.equal((await ali("preview", byNumberChoices, undefined, existingData)).unchanged, 1);
+
 console.log(
   "AliExpress API: read-only analysis, apply, replay, delivery update, stale preview 409, backup, S3 conditional writes and concurrent idempotent hiding passed.",
 );

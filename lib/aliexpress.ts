@@ -276,16 +276,20 @@ type SourceRow = ReturnType<typeof sourceRows>[number];
 
 function findBinding(catalog: Catalog, row: SourceRow) {
   if (row.ambiguous) return undefined;
-  const matches = catalog.items.flatMap((component) =>
+  const order = findAliOrder(catalog, row.order.order_id);
+  if (!order) return undefined;
+  const purchases = catalog.items.flatMap((component) =>
     (component.data.purchases ?? [])
-      .filter(
-        (p) =>
-          p.aliexpress?.orderId === row.order.order_id &&
-          p.aliexpress.itemKey === row.key &&
-          !p.aliexpress.ambiguous,
-      )
+      .filter((purchase) => purchase.orderId === order.id)
       .map((purchase) => ({ component, purchase })),
   );
+  const matches = purchases.filter(({ purchase }) =>
+    purchase.aliexpress?.itemKey === row.key && !purchase.aliexpress.ambiguous,
+  );
+  if (
+    !matches.length && row.order.items.length === 1 && purchases.length === 1 &&
+    !purchases[0].purchase.aliexpress
+  ) return purchases[0];
   return matches.length === 1 ? matches[0] : undefined;
 }
 
@@ -361,7 +365,6 @@ function updatePurchase(
       quantity: nextQuantity,
       status: nextStatus,
       aliexpress: {
-        orderId: row.order.order_id,
         itemKey: row.key,
         ambiguous: row.ambiguous || undefined,
         productUrl: aliProductUrl(row.item.product_url) ?? previous?.productUrl,
@@ -380,13 +383,26 @@ function updatePurchase(
   };
 }
 
-function orderFor(catalog: Catalog, order: AliOrder, purchase?: Purchase) {
-  if (purchase) return catalog.orders.find((o) => o.id === purchase.orderId);
+function findAliOrder(catalog: Catalog, number: string) {
   return catalog.orders.find(
     (o) =>
-      o.aliexpress?.orderId === order.order_id ||
-      (norm(o.source) === "aliexpress" && o.number === order.order_id),
-  );
+      norm(o.source) === "aliexpress" && norm(o.number) === norm(number),
+  ) ?? catalog.orders.find((o) => o.aliexpress?.orderId === number);
+}
+
+function orderFor(catalog: Catalog, order: AliOrder, purchase?: Purchase) {
+  return findAliOrder(catalog, order.order_id) ??
+    (purchase ? catalog.orders.find((o) => o.id === purchase.orderId) : undefined);
+}
+
+function rememberOrderCaption(
+  order: Catalog["orders"][number], caption: string, date: string,
+) {
+  const id = stableId("comment", [order.id, caption]);
+  if (!order.comments.some((comment) => comment.id === id))
+    order.comments.push({
+      id, text: `Прежнее название заказа: ${caption}`, createdAt: date,
+    });
 }
 
 function applyOrder(
@@ -396,11 +412,17 @@ function applyOrder(
   purchase?: Purchase,
 ) {
   const source = row.order;
-  let order = orderFor(catalog, source, purchase);
-  if (order?.aliexpress && order.aliexpress.orderId !== source.order_id)
+  const linkedOrder = purchase &&
+    catalog.orders.find((o) => o.id === purchase.orderId);
+  if (
+    linkedOrder && norm(linkedOrder.source) === "aliexpress" &&
+    norm(linkedOrder.number) !== norm(source.order_id) &&
+    linkedOrder.aliexpress?.orderId !== source.order_id
+  )
     throw new AliImportError(
       "Эта покупка уже связана с другим заказом AliExpress",
     );
+  let order = orderFor(catalog, source, purchase);
   if (!order) {
     order = {
       id: stableId("order", source.order_id),
@@ -412,9 +434,14 @@ function applyOrder(
     catalog.orders.push(order);
   }
   const before = JSON.stringify(order);
+  if (order.number !== source.order_id)
+    rememberOrderCaption(order, order.number, exportedAt);
+  order.number = source.order_id;
+  order.source = "AliExpress";
   const fresh =
     !order.aliexpress ||
     Date.parse(exportedAt) >= Date.parse(order.aliexpress.exportedAt);
+  if (order.aliexpress) delete order.aliexpress.orderId;
   if (fresh) {
     order.store ||= clean(source.store)?.slice(0, 200);
     order.url ||= clean(source.order_url);
@@ -430,7 +457,6 @@ function applyOrder(
       order.trackingNumbers = [...tracks.values()];
     }
     order.aliexpress = {
-      orderId: source.order_id,
       exportedAt,
       date: clean(source.date) ?? order.aliexpress?.date,
       status: clean(source.status) ?? order.aliexpress?.status,
@@ -500,7 +526,7 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
       if (binding) {
         const selection = {
           rowId: row.id,
-          unitsPerPack: binding.purchase.aliexpress!.unitsPerPack,
+          unitsPerPack: binding.purchase.aliexpress?.unitsPerPack ?? 1,
         };
         const next = updatePurchase(
           binding.purchase,
@@ -561,7 +587,7 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
           ? {
               componentId: binding.component.id,
               purchaseId: binding.purchase.id,
-              unitsPerPack: binding.purchase.aliexpress!.unitsPerPack,
+              unitsPerPack: binding.purchase.aliexpress?.unitsPerPack ?? 1,
               quantity: projected!.quantity,
               status: projected!.status,
               quantityOverride: projected!.aliexpress?.quantityOverride,
@@ -594,7 +620,11 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
             catalog.orders.find((o) => o.id === p.orderId)?.number ?? p.orderId,
           quantity: p.quantity,
           status: p.status,
-          aliOrderId: p.aliexpress?.orderId,
+          aliOrderId: (() => {
+            const order = catalog.orders.find((o) => o.id === p.orderId);
+            return order && norm(order.source) === "aliexpress"
+              ? order.number : order?.aliexpress?.orderId;
+          })(),
           productUrl: p.aliexpress?.productUrl,
           unitsPerPack: p.aliexpress?.unitsPerPack ?? 1,
         })),
@@ -651,11 +681,10 @@ export function planAliImport(
       throw new AliImportError("Позиция уже привязана к другой покупке");
     if (
       purchase?.aliexpress &&
-      (purchase.aliexpress.orderId !== row.order.order_id ||
-        (purchase.aliexpress.itemKey !== row.key &&
+      (purchase.aliexpress.itemKey !== row.key &&
           (!selection.purchaseId ||
             purchase.aliexpress.productUrl !==
-              aliProductUrl(row.item.product_url))))
+              aliProductUrl(row.item.product_url)))
     )
       throw new AliImportError(
         "Выбранная покупка уже связана с другим товаром",
@@ -744,7 +773,7 @@ export function planAliImport(
     );
     if (draftOrder && isNewComponent) {
       if (draftOrder.number !== row.order.order_id)
-        orderResult.order.number = draftOrder.number;
+        rememberOrderCaption(orderResult.order, draftOrder.number, data.exported_at);
       if (draftOrder.url && draftOrder.url !== row.order.order_url)
         orderResult.order.url = draftOrder.url;
       orderResult.order.comments = [
@@ -782,6 +811,7 @@ export function planAliImport(
     }
     const previous = { ...purchase };
     const result = updatePurchase(purchase, row, data.exported_at, selection);
+    result.purchase.orderId = orderResult.order.id;
     for (const warning of result.warnings) warnings.add(warning);
     if (row.ambiguous)
       warnings.add(

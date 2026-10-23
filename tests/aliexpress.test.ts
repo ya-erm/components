@@ -62,6 +62,91 @@ function firstSelection(data = source(), catalog = empty()): AliSelection {
   return { rowId: analyzeAli(catalog, data).rows[0].id, unitsPerPack: 10 };
 }
 
+test("order matching uses the domain order number and does not store duplicate external numbers", () => {
+  const data = source();
+  const saved = planAliImport(empty(), data, [firstSelection(data)]).catalog;
+  assert.equal(saved.orders[0].number, "fresh");
+  assert.equal(saved.orders[0].source, "AliExpress");
+  assert.equal("orderId" in saved.orders[0].aliexpress!, false);
+  assert.equal("orderId" in saved.items[0].data.purchases![0].aliexpress!, false);
+  // Служебные id не обязаны кодировать внешний номер.
+  saved.orders[0].number = "another-number";
+  data.orders[0].order_id = "another-number";
+  const restored = parseCatalog(JSON.parse(JSON.stringify(saved)));
+  const row = analyzeAli(restored, data).rows.find((row) => row.orderId === "another-number")!;
+  assert.equal(row.binding?.purchaseId, saved.items[0].data.purchases![0].id);
+  const repeated = planAliImport(restored, data, [{ rowId: row.id, unitsPerPack: 10 }]);
+  assert.equal(repeated.catalog.items.length, 1);
+  assert.equal(repeated.catalog.orders.length, 1);
+  assert.equal(repeated.catalog.items[0].data.purchases!.length, 1);
+});
+
+test("an unambiguous existing purchase matches by its order number without import metadata", () => {
+  const data = source();
+  data.orders[0].items = [data.orders[0].items[0]];
+  const catalog = parseCatalog({
+    version: 2,
+    orders: [{ id: "own-order", source: "AliExpress", number: "fresh" }],
+    items: [{ id: "own-part", data: {
+      name: "Моя плата", purchases: [{ id: "own-purchase", orderId: "own-order", quantity: 8, status: "delivered" }],
+    }, createdAt: data.exported_at, updatedAt: data.exported_at }],
+  });
+  const row = analyzeAli(catalog, data).rows[0];
+  assert.equal(row.binding?.componentId, "own-part");
+  const result = planAliImport(catalog, data, [{ rowId: row.id, unitsPerPack: 1 }]);
+  assert.equal(result.catalog.items.length, 1);
+  assert.equal(result.catalog.orders.length, 1);
+  assert.equal(result.catalog.items[0].data.purchases!.length, 1);
+  assert.equal(result.catalog.items[0].data.purchases![0].quantity, 8);
+  assert.equal(result.catalog.items[0].data.purchases![0].status, "delivered");
+  assert.equal(planAliImport(result.catalog, data, [{ rowId: row.id, unitsPerPack: 1 }]).preview.unchanged, 1);
+  const multi = source();
+  assert.equal(analyzeAli(catalog, multi).rows[0].binding, undefined);
+  catalog.orders[0].source = "Other shop";
+  assert.equal(analyzeAli(catalog, data).rows[0].binding, undefined);
+});
+
+test("legacy bindings are readable and move their number to the domain order on apply", () => {
+  const data = source();
+  const saved = planAliImport(empty(), data, [firstSelection(data)]).catalog;
+  const legacy = JSON.parse(JSON.stringify(saved));
+  legacy.orders[0].number = "Старое название";
+  legacy.orders[0].source = "Вручную";
+  legacy.orders[0].aliexpress.orderId = "fresh";
+  legacy.items[0].data.purchases[0].aliexpress.orderId = "fresh";
+  const restored = parseCatalog(legacy);
+  assert.ok(analyzeAli(restored, data).rows[0].binding);
+  const result = planAliImport(restored, data, [firstSelection(data, restored)]).catalog;
+  assert.equal(result.orders[0].number, "fresh");
+  assert.equal(result.orders[0].source, "AliExpress");
+  assert.ok(result.orders[0].comments.some((comment) => comment.text.includes("Старое название")));
+  assert.equal("orderId" in result.orders[0].aliexpress!, false);
+  assert.equal("orderId" in result.items[0].data.purchases![0].aliexpress!, false);
+  assert.equal(planAliImport(result, data, [firstSelection(data, result)]).preview.unchanged, 1);
+});
+
+test("explicit linking reuses the matching order and rejects a purchase from another AliExpress order", () => {
+  const data = source();
+  const catalog = parseCatalog({
+    version: 2,
+    orders: [
+      { id: "ali-order", source: "AliExpress", number: "fresh" },
+      { id: "manual-order", number: "Моя покупка" },
+    ],
+    items: [{ id: "own-part", data: {
+      name: "Моя плата", purchases: [{ id: "own-purchase", orderId: "manual-order", quantity: 8, status: "delivered" }],
+    }, createdAt: data.exported_at, updatedAt: data.exported_at }],
+  });
+  const choice = { ...firstSelection(data, catalog), componentId: "own-part", purchaseId: "own-purchase" };
+  const result = planAliImport(catalog, data, [choice]).catalog;
+  assert.equal(result.orders.length, 2);
+  assert.equal(result.items[0].data.purchases![0].orderId, "ali-order");
+  assert.equal(result.items[0].data.purchases![0].quantity, 8);
+  catalog.orders[1].source = "AliExpress";
+  catalog.orders[1].number = "different-order";
+  assert.throws(() => planAliImport(catalog, data, [choice]), /другим заказом/);
+});
+
 test("individual goods can be applied sequentially to one component without touching the rest", () => {
   const data = source();
   const rows = analyzeAli(empty(), data).rows;
@@ -383,7 +468,9 @@ test("existing component accepts another order and manual purchase can be linked
   assert.equal(result.catalog.items[0].data.purchases!.length, 1);
   assert.equal(result.catalog.items[0].data.purchases![0].quantity, 8);
   assert.equal(result.catalog.items[0].data.purchases![0].status, "delivered");
-  assert.equal(result.catalog.orders[0].number, "Покупка ESP");
+  assert.equal(result.catalog.orders[0].number, "fresh");
+  assert.equal(result.catalog.orders[0].source, "AliExpress");
+  assert.ok(result.catalog.orders[0].comments.some((comment) => comment.text.includes("Покупка ESP")));
   assert.ok(analyzeAli(result.catalog, data).rows[0].binding);
   const row = analyzeAli(result.catalog, data).rows.find(
     (r) => r.orderId === "old",

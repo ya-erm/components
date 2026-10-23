@@ -457,7 +457,13 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                               )?.number ?? purchase.orderId,
                             quantity: purchase.quantity,
                             status: purchase.status,
-                            aliOrderId: purchase.aliexpress?.orderId,
+                            aliOrderId: (() => {
+                              const order = previous.logistics.orders.find(
+                                (entry) => entry.id === purchase.orderId,
+                              );
+                              return order?.source.trim().toLowerCase() === "aliexpress"
+                                ? order.number : order?.aliexpress?.orderId;
+                            })(),
                             productUrl: purchase.aliexpress?.productUrl,
                             unitsPerPack:
                               purchase.aliexpress?.unitsPerPack ?? 1,
@@ -891,7 +897,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                                       (p) =>
                                         !p.aliOrderId ||
                                         (p.aliOrderId === row.orderId &&
-                                          p.productUrl === row.productUrl),
+                                          (!p.productUrl || p.productUrl === row.productUrl)),
                                     )
                                     .map((p) => (
                                       <option key={p.id} value={p.id}>
