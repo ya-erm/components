@@ -4,7 +4,7 @@ import { currentUserId } from "@/lib/session";
 import { readCatalog } from "@/lib/components-repo";
 import { AppHeader, BackLink } from "@/components/AppHeader";
 import { ProjectCard } from "@/components/ProjectCard";
-import { ButtonLink } from "@/components/ui/Button";
+import { PlusIcon } from "@/components/ui/Field";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +14,21 @@ export default async function ProjectsPage() {
   const catalog = await readCatalog(ownerId);
   return (
     <>
-      <AppHeader title="Проекты" left={<BackLink href="/components" />} />
+      <AppHeader
+        title="Проекты"
+        left={<BackLink href="/components" />}
+        right={
+          <Link
+            href="/projects/new"
+            aria-label="Новый проект"
+            className="-mr-1 inline-flex items-center gap-1 rounded-lg px-2 py-1.5 font-medium text-[var(--color-accent)] transition hover:bg-[var(--color-surface-2)] active:opacity-70"
+          >
+            <PlusIcon className="size-5 shrink-0" />
+            <span className="hidden sm:inline">Новый проект</span>
+          </Link>
+        }
+      />
       <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-5">
-        <ButtonLink href="/projects/new" className="self-start">
-          Новый проект
-        </ButtonLink>
         {catalog.projects.length === 0 ? (
           <p className="text-sm text-[var(--color-muted)]">
             Проектов пока нет.
