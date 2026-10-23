@@ -52,9 +52,6 @@ export default async function ProjectsPage() {
                 className="mb-3 block rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
               >
                 <ProjectCard project={project} />
-                <span className="mt-2 block text-xs text-[var(--color-accent)]">
-                  Открыть проект ↗
-                </span>
               </Link>
               <ul className="flex flex-col gap-2">
                 {components.map((component) => (
