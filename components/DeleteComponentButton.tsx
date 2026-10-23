@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/states";
+import { componentReturnTarget, removeSavedComponent } from "@/lib/component-list-state";
 
 export function DeleteComponentButton({ id }: { id: string }) {
   const router = useRouter();
@@ -17,7 +18,9 @@ export function DeleteComponentButton({ id }: { id: string }) {
     try {
       const res = await fetch(`/api/components/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      router.push("/components");
+      const returnTarget = componentReturnTarget(`/components/${id}`, "/components");
+      removeSavedComponent(id);
+      router.push(returnTarget.href, { scroll: returnTarget.scroll });
       router.refresh();
     } catch {
       setError("Не удалось удалить");

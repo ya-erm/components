@@ -2,11 +2,17 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { MouseEvent, ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import type { ComponentDTO } from "@/lib/components-repo";
+import {
+  type ComponentListPage as Page,
+  readComponentList,
+  reconcileComponentList,
+  saveComponentList,
+} from "@/lib/component-list-state";
 import { COMPONENT_STATUSES, STATUS_LABELS, mainImage } from "@/lib/schema";
 import { ComponentCard, NoImageIcon } from "@/components/ComponentCard";
 import { InventorySummary } from "@/components/InventorySummary";
@@ -15,7 +21,6 @@ import { ChevronDownIcon, FilterIcon, Input, SearchIcon, Select } from "@/compon
 import { Button } from "@/components/ui/Button";
 import { CenterState, Spinner } from "@/components/ui/states";
 
-type Page = { items: ComponentDTO[]; total: number; page: number; pageSize: number };
 type Facet = { value: string; count: number };
 type GroupBy = "none" | "type" | "tag";
 type ViewMode = "grid" | "compact" | "list";
@@ -33,19 +38,33 @@ export function ComponentGrid({
   initial,
   initialViewMode,
   initialCollapsedGroups,
+  ownerId,
 }: {
   initial: Page;
   initialViewMode: ViewMode;
   initialCollapsedGroups: CollapsedGroupsByGroup;
+  ownerId: string;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [restored] = useState(() =>
+    readComponentList(ownerId, searchParams.size ? `${pathname}?${searchParams}` : pathname),
+  );
+  const startingPage = restored?.result ?? initial;
 
   // Инициализируем фильтры из URL — восстанавливаются при навигации назад.
-  const [items, setItems] = useState<ComponentDTO[]>(initial.items);
-  const [total, setTotal] = useState(initial.total);
-  const [page, setPage] = useState(initial.page);
+  const [items, setItems] = useState<ComponentDTO[]>(startingPage.items);
+  const [total, setTotal] = useState(startingPage.total);
+  const [page, setPage] = useState(startingPage.page);
+  const previousInitial = useRef(initial);
+  useEffect(() => {
+    if (previousInitial.current === initial) return;
+    previousInitial.current = initial;
+    if (restored) return;
+    setItems(initial.items);
+    setTotal(initial.total);
+    setPage(initial.page);
+  }, [initial, restored]);
 
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [status, setStatus] = useState(() => searchParams.get("status") ?? "");
@@ -54,7 +73,7 @@ export function ComponentGrid({
   const [groupBy, setGroupBy] = useState<GroupBy>(
     () => parseGroupBy(searchParams.get("groupBy")),
   );
-  const [viewMode, setViewModeState] = useState<ViewMode>(initialViewMode);
+  const [viewMode, setViewModeState] = useState<ViewMode>(restored?.viewMode ?? initialViewMode);
 
   const hasUrlFilters = Boolean(
     searchParams.get("q") || searchParams.get("status") || searchParams.get("type") ||
@@ -62,7 +81,7 @@ export function ComponentGrid({
   );
 
   // На мобильном панель фильтров скрыта по умолчанию; открываем если уже есть активные.
-  const [filtersOpen, setFiltersOpen] = useState(hasUrlFilters);
+  const [filtersOpen, setFiltersOpen] = useState(restored?.filtersOpen ?? hasUrlFilters);
   const activeFilters =
     (status ? 1 : 0) + (type ? 1 : 0) + (tag ? 1 : 0) + (groupBy !== DEFAULT_GROUP_BY ? 1 : 0);
 
@@ -74,9 +93,19 @@ export function ComponentGrid({
   const [collapsedGroupsByGroup, setCollapsedGroupsByGroup] = useState<
     Record<CollapsibleGroupBy, Set<string>>
   >(() => ({
-    type: new Set(initialCollapsedGroups.type),
-    tag: new Set(initialCollapsedGroups.tag),
+    type: new Set(restored?.collapsedGroups.type ?? initialCollapsedGroups.type),
+    tag: new Set(restored?.collapsedGroups.tag ?? initialCollapsedGroups.tag),
   }));
+
+  useLayoutEffect(() => {
+    if (!restored) return;
+    window.scrollTo({ top: restored.scrollY, behavior: "instant" });
+    // Next также управляет прокруткой при переходе: повторяем после его commit.
+    const frame = requestAnimationFrame(() =>
+      window.scrollTo({ top: restored.scrollY, behavior: "instant" }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [restored]);
 
   // Фасеты для выпадающих списков (типы и теги каталога).
   useEffect(() => {
@@ -115,7 +144,7 @@ export function ComponentGrid({
   );
 
   const load = useCallback(
-    async (opts: { append?: boolean; pageNum?: number; all?: boolean }) => {
+    async (opts: { append?: boolean; pageNum?: number; all?: boolean; restore?: boolean }) => {
       const id = ++reqId.current;
       setLoading(true);
       setError(null);
@@ -123,30 +152,36 @@ export function ComponentGrid({
         const params = opts.all
           ? buildParams({ all: "1" })
           : buildParams({ page: String(opts.pageNum ?? 1) });
-        const res = await fetch(`/api/components?${params}`);
+        const res = await fetch(`/api/components?${params}`, { cache: "no-store" });
         if (!res.ok) throw new Error();
         const data: Page = await res.json();
         if (id !== reqId.current) return;
         setTotal(data.total);
-        setPage(data.page);
-        setItems((prev) => (opts.append ? [...prev, ...data.items] : data.items));
+        setPage(opts.restore && restored ? restored.result.page : data.page);
+        setItems((prev) => opts.restore
+          ? reconcileComponentList(prev, data).items
+          : opts.append ? [...prev, ...data.items] : data.items);
       } catch {
         if (id === reqId.current) setError("Не удалось загрузить компоненты");
       } finally {
         if (id === reqId.current) setLoading(false);
       }
     },
-    [buildParams],
+    [buildParams, restored],
   );
 
-  // Перезагрузка при изменении поиска/фильтров/режима группировки (с дебаунсом).
-  // Если URL уже содержит фильтры при монтировании — isFirst=false, чтобы сразу загрузить.
-  const isFirst = useRef(!hasUrlFilters);
+  const previousFilters = useRef<string | null>(null);
+  // При возврате сверяем данные сразу; debounce нужен только при вводе фильтров.
   useEffect(() => {
-    if (isFirst.current) {
-      isFirst.current = false;
+    const filters = JSON.stringify([query, status, type, tag, groupBy]);
+    if (previousFilters.current === null) {
+      previousFilters.current = filters;
+      if (restored) void load({ all: true, restore: true });
       return;
     }
+    if (previousFilters.current === filters) return;
+    previousFilters.current = filters;
+    ++reqId.current;
     const t = setTimeout(() => {
       // Обновляем URL с replace (без записи в историю).
       const params = new URLSearchParams();
@@ -156,12 +191,12 @@ export function ComponentGrid({
       if (tag) params.set("tag", tag);
       if (groupBy !== DEFAULT_GROUP_BY) params.set("groupBy", groupBy);
       const search = params.toString();
-      router.replace(search ? `${pathname}?${search}` : pathname, { scroll: false });
+      window.history.replaceState(null, "", search ? `${pathname}?${search}` : pathname);
       // Загружаем данные.
       load(groupBy === "none" ? { pageNum: 1 } : { all: true });
     }, 250);
     return () => clearTimeout(t);
-  }, [query, status, type, tag, groupBy, load, pathname, router]);
+  }, [query, status, type, tag, groupBy, load, pathname, restored]);
 
   const hasMore = groupBy === "none" && items.length < total;
   const hasFilters = Boolean(query.trim() || status || type || tag);
@@ -183,8 +218,28 @@ export function ComponentGrid({
     });
   };
 
+  function rememberList(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
+    if (!link || link.target === "_blank" || link.origin !== window.location.origin || !/^\/components\/[^/]+$/.test(link.pathname)) return;
+    const params = buildParams({});
+    if (groupBy !== DEFAULT_GROUP_BY) params.set("groupBy", groupBy);
+    const search = params.toString();
+    const href = search ? `${pathname}?${search}` : pathname;
+    window.history.replaceState(null, "", href);
+    saveComponentList({
+      ownerId, href, componentPath: link.pathname, scrollY: window.scrollY,
+      result: { items, total, page, pageSize: initial.pageSize },
+      viewMode, filtersOpen,
+      collapsedGroups: {
+        type: [...collapsedGroupsByGroup.type],
+        tag: [...collapsedGroupsByGroup.tag],
+      },
+    });
+  }
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" onClickCapture={rememberList}>
       <div className="sticky top-[calc(env(safe-area-inset-top)+3.5rem)] z-10 -mx-4 flex flex-col gap-2 bg-[var(--color-bg)]/90 px-4 py-2 backdrop-blur">
         <div className="flex items-stretch gap-2">
           <div className="relative flex-1">
@@ -305,17 +360,14 @@ export function ComponentGrid({
       </div>
 
       {error ? (
-        <CenterState
-          icon="⚠️"
-          title="Ошибка"
-          description={error}
-          action={
-            <Button variant="secondary" onClick={() => load(groupBy === "none" ? { pageNum: 1 } : { all: true })}>
-              Повторить
-            </Button>
-          }
-        />
-      ) : items.length === 0 ? (
+        <div role="alert" className="flex items-center justify-between gap-3 py-3 text-sm text-red-500">
+          <span>{error}</span>
+          <Button variant="secondary" onClick={() => load(restored ? { all: true, restore: true } : groupBy === "none" ? { pageNum: 1 } : { all: true })}>
+            Повторить
+          </Button>
+        </div>
+      ) : null}
+      {items.length === 0 ? (
         loading ? (
           <CenterState icon={<Spinner />} title="Загрузка…" />
         ) : hasFilters ? (
