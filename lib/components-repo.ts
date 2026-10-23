@@ -10,6 +10,7 @@ import {
   aliExportSchema,
   type AliSelection,
   planAliImport,
+  planAliVisibility,
 } from "./aliexpress";
 import type { z } from "zod";
 import {
@@ -83,6 +84,37 @@ export async function applyAliImport(
     }
   }
   return plan.preview;
+}
+
+export async function setAliVisibility(
+  ownerId: string,
+  data: z.infer<typeof aliExportSchema>,
+  rowIds: string[],
+  hidden: boolean,
+) {
+  const key = catalogKey(ownerId);
+  const stored = await getJsonVersioned<unknown>(key);
+  if (stored.value !== null && !stored.etag)
+    throw new AliConflictError("Не удалось получить версию каталога");
+  const catalog = planAliVisibility(
+    parseCatalog(stored.value),
+    data,
+    rowIds,
+    hidden,
+  );
+  try {
+    await putJsonConditional(key, catalog, stored.etag);
+  } catch (error) {
+    if (
+      [409, 412].includes(
+        (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+          ?.httpStatusCode ?? 0,
+      )
+    )
+      throw new AliConflictError("Каталог изменился. Повторите действие.");
+    throw error;
+  }
+  return catalog;
 }
 
 async function writeCatalog(

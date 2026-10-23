@@ -177,6 +177,14 @@ export function mergeLogistics(catalog: Catalog, patch?: Logistics): Catalog {
     orders: merge(catalog.orders, patch.orders),
     shipments: merge(catalog.shipments, patch.shipments),
     projects: merge(catalog.projects, patch.projects ?? []),
+    ...(patch.ignoredAliItems
+      ? {
+          ignoredAliItems: merge(
+            catalog.ignoredAliItems ?? [],
+            patch.ignoredAliItems,
+          ),
+        }
+      : {}),
   };
 }
 

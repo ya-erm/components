@@ -189,6 +189,18 @@ export const shipmentSchema = z.object({
   url: optionalUrl,
 });
 export const logisticsSchema = z.object({
+  ignoredAliItems: z
+    .array(
+      z.object({
+        id: identifier,
+        orderId: identifier,
+        itemKey: z.string().min(1).max(8000),
+        title: z.string().max(4000),
+        createdAt: z.string().datetime(),
+      }),
+    )
+    .max(10000)
+    .optional(),
   orders: z.array(orderSchema).max(5000).default([]),
   shipments: z.array(shipmentSchema).max(5000).default([]),
   projects: z.array(projectSchema).max(5000).optional(),

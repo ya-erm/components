@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { currentUserId } from "@/lib/session";
-import { readCatalog, applyAliImport } from "@/lib/components-repo";
+import {
+  readCatalog,
+  applyAliImport,
+  setAliVisibility,
+} from "@/lib/components-repo";
 import {
   aliExportSchema,
   aliSelectionSchema,
@@ -14,10 +18,11 @@ import { CatalogValidationError } from "@/lib/catalog";
 
 export const runtime = "nodejs";
 const requestSchema = z.object({
-  action: z.enum(["analyze", "preview", "apply"]),
+  action: z.enum(["analyze", "preview", "apply", "hide", "restore"]),
   data: aliExportSchema,
   selections: z.array(aliSelectionSchema).max(5000).default([]),
   token: z.string().max(100).optional(),
+  rowIds: z.array(z.string().max(100)).max(5000).optional(),
 });
 
 export async function POST(req: Request) {
@@ -32,6 +37,15 @@ export async function POST(req: Request) {
     );
   try {
     const input = requestSchema.parse(JSON.parse(raw));
+    if (input.action === "hide" || input.action === "restore") {
+      const catalog = await setAliVisibility(
+        ownerId,
+        input.data,
+        input.rowIds ?? [],
+        input.action === "hide",
+      );
+      return NextResponse.json(analyzeAli(catalog, input.data));
+    }
     if (input.action === "apply") {
       if (!input.token) throw new AliImportError("Сначала проверьте изменения");
       return NextResponse.json(

@@ -38,6 +38,11 @@ type Props = {
   initialLogistics: Logistics;
   title: string;
   backHref: string;
+  onSaveDraft?: (value: {
+    data: ComponentData;
+    logistics?: Logistics;
+  }) => void | Promise<void>;
+  onCancelDraft?: () => void;
 };
 
 type FormValues = {
@@ -96,6 +101,8 @@ export function ComponentForm({
   initialLogistics,
   title,
   backHref,
+  onSaveDraft,
+  onCancelDraft,
 }: Props) {
   const router = useRouter();
   const isEdit = Boolean(id);
@@ -189,7 +196,7 @@ export function ComponentForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!hasChanges || saving) return;
+    if ((!hasChanges && !onSaveDraft) || saving) return;
     setErrors({});
     setFormError(null);
 
@@ -213,6 +220,10 @@ export function ComponentForm({
 
     setSaving(true);
     try {
+      if (onSaveDraft) {
+        await onSaveDraft(parsed.data);
+        return;
+      }
       const res = await fetch(
         isEdit ? `/api/components/${id}` : "/api/components",
         {
@@ -230,8 +241,12 @@ export function ComponentForm({
       updateSavedComponent(saved);
       router.push(returnTarget.href, { scroll: returnTarget.scroll });
       router.refresh();
-    } catch {
-      setFormError("Сетевая ошибка. Попробуйте ещё раз.");
+    } catch (error) {
+      setFormError(
+        onSaveDraft && error instanceof Error
+          ? error.message
+          : "Сетевая ошибка. Попробуйте ещё раз.",
+      );
     } finally {
       setSaving(false);
     }
@@ -241,12 +256,24 @@ export function ComponentForm({
     <>
       <AppHeader
         title={title}
-        left={<BackLink href={returnTarget.href} scroll={returnTarget.scroll} />}
+        left={
+          onCancelDraft ? (
+            <button
+              type="button"
+              onClick={onCancelDraft}
+              className="px-2 py-2 text-[var(--color-accent)]"
+            >
+              ‹ К импорту
+            </button>
+          ) : (
+            <BackLink href={returnTarget.href} scroll={returnTarget.scroll} />
+          )
+        }
         right={
           <button
             type="submit"
             form={FORM_ID}
-            disabled={saving || !hasChanges}
+            disabled={saving || (!hasChanges && !onSaveDraft)}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-[var(--color-accent)] transition active:opacity-70 disabled:opacity-40"
           >
             {saving ? <Spinner className="size-4" /> : "Готово"}
@@ -382,10 +409,18 @@ export function ComponentForm({
           <div>
             <Button
               type="submit"
-              disabled={saving || !hasChanges}
+              disabled={saving || (!hasChanges && !onSaveDraft)}
               className="w-full"
             >
-              {saving ? <Spinner /> : isEdit ? "Сохранить" : "Добавить"}
+              {saving ? (
+                <Spinner />
+              ) : onSaveDraft ? (
+                "Готово — к импорту"
+              ) : isEdit ? (
+                "Сохранить"
+              ) : (
+                "Добавить"
+              )}
             </Button>
           </div>
         </form>

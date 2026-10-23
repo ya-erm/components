@@ -4,10 +4,11 @@ import {
   aliExportSchema,
   analyzeAli,
   planAliImport,
+  planAliVisibility,
   type AliSelection,
 } from "../lib/aliexpress";
 import { parseCatalog } from "../lib/catalog";
-import { inventoryTotals } from "../lib/schema";
+import { inventoryTotals, componentDataSchema } from "../lib/schema";
 
 function source() {
   return aliExportSchema.parse({
@@ -60,6 +61,159 @@ const empty = () => parseCatalog(null);
 function firstSelection(data = source(), catalog = empty()): AliSelection {
   return { rowId: analyzeAli(catalog, data).rows[0].id, unitsPerPack: 10 };
 }
+
+test("full component draft preserves metadata, images, comments, purchases and project usage", () => {
+  const data = source();
+  const selection = firstSelection(data);
+  const sourceId = `ali-source-${selection.rowId}`;
+  selection.componentDraft = {
+    data: componentDataSchema.parse({
+      name: "Контроллер",
+      type: "Плата/МК",
+      tags: ["робот", "ESP"],
+      note: "Ящик 2",
+      images: ["https://ae-pic-a1.aliexpress-media.com/test.jpg"],
+      url: "https://example.com/board",
+      comments: [
+        {
+          id: "comment",
+          text: "Проверить питание",
+          createdAt: data.exported_at,
+        },
+      ],
+      purchases: [
+        { id: sourceId, orderId: sourceId, quantity: 20, status: "in_transit" },
+        {
+          id: "manual",
+          orderId: "manual-order",
+          quantity: 5,
+          status: "delivered",
+        },
+      ],
+      usages: [{ id: "usage", projectId: "robot", quantity: 2 }],
+    }),
+    logistics: {
+      orders: [
+        {
+          id: sourceId,
+          number: "Платы Ali",
+          source: "AliExpress",
+          comments: [],
+          trackingNumbers: ["TRACK-1"],
+        },
+        {
+          id: "manual-order",
+          number: "Магазин",
+          source: "Вручную",
+          comments: [],
+          trackingNumbers: [],
+        },
+      ],
+      shipments: [],
+      projects: [{ id: "robot", name: "Робот" }],
+    },
+  };
+  const result = planAliImport(empty(), data, [selection]);
+  const part = result.catalog.items[0];
+  assert.equal(part.data.name, "Контроллер");
+  assert.equal(part.data.type, "Плата/МК");
+  assert.deepEqual(part.data.tags, ["робот", "ESP"]);
+  assert.equal(part.data.note, "Ящик 2");
+  assert.equal(part.data.comments[0].text, "Проверить питание");
+  assert.equal(part.data.images.length, 1);
+  assert.equal(part.data.purchases!.length, 2);
+  assert.equal(
+    part.data.purchases!.some((p) => p.id === sourceId),
+    false,
+  );
+  assert.equal(inventoryTotals(part.data)[0].quantity, 3);
+  assert.equal(result.preview.changes[0].after.data.tags[0], "робот");
+  assert.equal(result.preview.changes[0].fields[0].after, "20");
+  assert.deepEqual(
+    planAliImport(result.catalog, data, [selection]).catalog,
+    result.catalog,
+  );
+  assert.equal(
+    analyzeAli(result.catalog, data).components[0].data.name,
+    "Контроллер",
+  );
+});
+
+test("ignored goods stay hidden across uploads, source reorder and catalog export, and can be restored", () => {
+  const data = source(),
+    initial = empty();
+  const row = analyzeAli(initial, data).rows[0];
+  const hidden = planAliVisibility(initial, data, [row.id], true);
+  assert.equal(initial.ignoredAliItems, undefined);
+  assert.equal(hidden.items.length, 0);
+  const restoredCatalog = parseCatalog(JSON.parse(JSON.stringify(hidden)));
+  data.orders[0].items.reverse();
+  const analysis = analyzeAli(restoredCatalog, data);
+  assert.equal(analysis.rows.find((r) => r.title === "ESP32")!.ignored, true);
+  assert.equal(analysis.rows.find((r) => r.title === "LED")!.ignored, false);
+  assert.throws(
+    () =>
+      planAliImport(restoredCatalog, data, [
+        { rowId: row.id, unitsPerPack: 1 },
+      ]),
+    /Товар скрыт/,
+  );
+  const visible = planAliVisibility(restoredCatalog, data, [row.id], false);
+  assert.equal(
+    analyzeAli(visible, data).rows.find((r) => r.id === row.id)!.ignored,
+    false,
+  );
+  assert.equal(
+    planAliImport(visible, data, [{ rowId: row.id, unitsPerPack: 1 }]).catalog
+      .items.length,
+    1,
+  );
+});
+
+test("hiding indistinguishable duplicate goods uses product identity, never source index", () => {
+  const data = source();
+  data.orders[0].items.push({ ...data.orders[0].items[0] });
+  const rows = analyzeAli(empty(), data).rows;
+  const hidden = planAliVisibility(empty(), data, [rows[0].id], true);
+  data.orders[0].items.reverse();
+  assert.equal(
+    analyzeAli(hidden, data).rows.filter((row) => row.ignored).length,
+    2,
+  );
+});
+
+test("preview cards show final quantities when several selected goods share a component", () => {
+  const data = source();
+  const catalog = parseCatalog([
+    {
+      id: "part",
+      data: { name: "Общий компонент", purchases: [] },
+      createdAt: data.exported_at,
+      updatedAt: data.exported_at,
+    },
+  ]);
+  const rows = analyzeAli(catalog, data).rows.filter(
+    (row) => row.orderId === "fresh",
+  );
+  const result = planAliImport(
+    catalog,
+    data,
+    rows.map((row) => ({
+      rowId: row.id,
+      componentId: "part",
+      unitsPerPack: 1,
+    })),
+  );
+  assert.equal(result.catalog.items[0].data.purchases!.length, 2);
+  assert.ok(
+    result.preview.changes.every(
+      (change) => change.after.data.purchases!.length === 2,
+    ),
+  );
+  assert.ok(
+    result.preview.changes.every((change) => change.orderNumber === "fresh"),
+  );
+});
 
 test("selective import creates only chosen purchase, and repeated import is an exact no-op", () => {
   const data = source(),

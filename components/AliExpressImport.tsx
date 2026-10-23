@@ -13,6 +13,17 @@ import { PURCHASE_LABELS, type Purchase } from "@/lib/schema";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Spinner } from "@/components/ui/states";
+import { ComponentCard } from "@/components/ComponentCard";
+import dynamic from "next/dynamic";
+import { AliImportPreview } from "@/components/AliImportPreview";
+
+const AliComponentWorkspace = dynamic(
+  () =>
+    import("@/components/AliComponentWorkspace").then(
+      (module) => module.AliComponentWorkspace,
+    ),
+  { loading: () => <p role="status">Открываю карточки компонентов…</p> },
+);
 
 type Draft = {
   componentId: string;
@@ -23,6 +34,7 @@ type Draft = {
   status: Purchase["status"];
   quantityEdited: boolean;
   statusEdited: boolean;
+  componentDraft?: AliSelection["componentDraft"];
 };
 const KINDS = {
   new: "Новый",
@@ -59,6 +71,10 @@ export function AliExpressImport() {
   const [done, setDone] = useState<AliPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [workspace, setWorkspace] = useState<{
+    rowId: string;
+    mode: "choose" | "new";
+  } | null>(null);
   const count = Object.keys(selected).length;
 
   async function request<T>(
@@ -66,11 +82,12 @@ export function AliExpressImport() {
     source: unknown,
     selections?: AliSelection[],
     token?: string,
+    rowIds?: string[],
   ): Promise<T> {
     const response = await fetch("/api/components/aliexpress", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, data: source, selections, token }),
+      body: JSON.stringify({ action, data: source, selections, token, rowIds }),
     });
     const body = await response.json();
     if (!response.ok)
@@ -114,6 +131,7 @@ export function AliExpressImport() {
     setSelected((previous) => {
       const next = { ...previous };
       for (const row of rows) {
+        if (row.ignored) continue;
         if (checked) next[row.id] ??= initialDraft(row);
         else delete next[row.id];
       }
@@ -132,6 +150,7 @@ export function AliExpressImport() {
       componentId: draft.componentId || undefined,
       purchaseId: draft.purchaseId || undefined,
       name: draft.componentId ? undefined : draft.name.trim() || undefined,
+      componentDraft: draft.componentId ? undefined : draft.componentDraft,
       unitsPerPack: Number(draft.unitsPerPack),
       quantity: draft.quantityEdited
         ? draft.quantity === ""
@@ -141,15 +160,69 @@ export function AliExpressImport() {
       status: draft.statusEdited ? draft.status : undefined,
     }));
   }
+  function openWorkspace(rowId: string, mode: "choose" | "new") {
+    const draft = selected[rowId];
+    if (
+      !Number.isSafeInteger(Number(draft.unitsPerPack)) ||
+      Number(draft.unitsPerPack) < 1 ||
+      (draft.quantity !== "" &&
+        (!Number.isSafeInteger(Number(draft.quantity)) ||
+          Number(draft.quantity) < 0))
+    ) {
+      setError(
+        "Укажите целое неотрицательное количество и число штук в упаковке не меньше 1.",
+      );
+      return;
+    }
+    setWorkspace({ rowId, mode });
+  }
   async function review(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
+      if (
+        Object.values(selected).some(
+          (draft) => !draft.componentId && !draft.componentDraft,
+        )
+      )
+        throw new Error(
+          "Заполните карточку нового компонента или выберите существующий компонент для каждого товара.",
+        );
       setPreview(await request<AliPreview>("preview", data, selections()));
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка предпросмотра");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function visibility(row: AliRow) {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await request<AliAnalysis>(
+        row.ignored ? "restore" : "hide",
+        data,
+        undefined,
+        undefined,
+        [row.id],
+      );
+      setAnalysis(result);
+      setSelected((previous) =>
+        Object.fromEntries(
+          Object.entries(previous).filter(
+            ([id]) => !result.rows.find((item) => item.id === id)?.ignored,
+          ),
+        ),
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не удалось изменить видимость товара",
+      );
     } finally {
       setBusy(false);
     }
@@ -186,7 +259,9 @@ export function AliExpressImport() {
   const filtered =
     analysis?.rows.filter(
       (row) =>
-        (!kind || row.kind === kind) &&
+        (kind === "hidden"
+          ? row.ignored
+          : !row.ignored && (!kind || row.kind === kind)) &&
         (!since || row.dateSort >= since) &&
         (!query ||
           [row.orderId, row.title, row.sku, row.store, ...row.trackingNumbers]
@@ -200,6 +275,74 @@ export function AliExpressImport() {
 
   return (
     <div className="flex flex-col gap-5">
+      {workspace && analysis && selected[workspace.rowId] ? (
+        <AliComponentWorkspace
+          key={`${workspace.rowId}:${workspace.mode}`}
+          mode={workspace.mode}
+          row={analysis.rows.find((row) => row.id === workspace.rowId)!}
+          analysis={analysis}
+          componentDraft={selected[workspace.rowId].componentDraft}
+          quantity={
+            selected[workspace.rowId].quantity === ""
+              ? undefined
+              : Number(selected[workspace.rowId].quantity)
+          }
+          status={selected[workspace.rowId].status}
+          onClose={() => setWorkspace(null)}
+          onChoose={(item) => {
+            setAnalysis((previous) =>
+              previous
+                ? {
+                    ...previous,
+                    components: [
+                      ...previous.components.filter(
+                        (entry) => entry.id !== item.id,
+                      ),
+                      {
+                        ...item,
+                        name: item.data.name,
+                        purchases: (item.data.purchases ?? []).map(
+                          (purchase) => ({
+                            id: purchase.id,
+                            order:
+                              previous.logistics.orders.find(
+                                (order) => order.id === purchase.orderId,
+                              )?.number ?? purchase.orderId,
+                            quantity: purchase.quantity,
+                            status: purchase.status,
+                            aliOrderId: purchase.aliexpress?.orderId,
+                            productUrl: purchase.aliexpress?.productUrl,
+                            unitsPerPack:
+                              purchase.aliexpress?.unitsPerPack ?? 1,
+                          }),
+                        ),
+                      },
+                    ],
+                  }
+                : previous,
+            );
+            edit(workspace.rowId, { componentId: item.id, purchaseId: "" });
+            setWorkspace(null);
+          }}
+          onDraft={(value, source) => {
+            const current = selected[workspace.rowId];
+            edit(workspace.rowId, {
+              componentId: "",
+              purchaseId: "",
+              componentDraft: value,
+              name: value.data.name,
+              quantity: String(source.quantity ?? ""),
+              status: source.status,
+              quantityEdited:
+                current.quantityEdited ||
+                String(source.quantity ?? "") !== current.quantity,
+              statusEdited:
+                current.statusEdited || source.status !== current.status,
+            });
+            setWorkspace(null);
+          }}
+        />
+      ) : null}
       <p className="text-sm text-[var(--color-muted)]">
         Загрузите выгрузку заказов, выберите нужные товары и проверьте
         изменения. Сохранённые привязки подставятся при следующем импорте.
@@ -286,53 +429,12 @@ export function AliExpressImport() {
           </Button>
         </section>
       ) : preview ? (
-        <section
-          className="flex flex-col gap-4"
-          aria-label="Предпросмотр импорта"
-        >
-          <h2 className="text-lg font-semibold">Проверьте изменения</h2>
-          <p className="text-sm text-[var(--color-muted)]">
-            Создано компонентов: {preview.created}. Обновлено позиций:{" "}
-            {preview.updated}. Без изменений: {preview.unchanged}.
-          </p>
-          {preview.changes.map((change) => (
-            <div
-              key={change.rowId}
-              className="rounded-xl border border-[var(--color-border)] p-4"
-            >
-              <p className="font-medium break-words">{change.name}</p>
-              <p className="text-sm text-[var(--color-accent)]">
-                {change.action}
-              </p>
-              <ul className="mt-2 space-y-1 text-sm">
-                {change.details.map((detail) => (
-                  <li key={detail} className="break-words">
-                    {detail}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-          {preview.warnings.length ? (
-            <ul className="space-y-1 text-sm text-amber-600 dark:text-amber-400">
-              {preview.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => setPreview(null)}
-            >
-              Назад к выбору
-            </Button>
-            <Button disabled={busy} onClick={() => void apply()}>
-              {busy ? <Spinner /> : null}Применить изменения
-            </Button>
-          </div>
-        </section>
+        <AliImportPreview
+          preview={preview}
+          busy={busy}
+          onBack={() => setPreview(null)}
+          onApply={() => void apply()}
+        />
       ) : analysis ? (
         <form onSubmit={review} className="flex flex-col gap-4">
           <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
@@ -352,6 +454,10 @@ export function AliExpressImport() {
                   onChange={(e) => setKind(e.target.value)}
                 >
                   <option value="">Все позиции</option>
+                  <option value="hidden">
+                    Скрытые ({analysis.rows.filter((row) => row.ignored).length}
+                    )
+                  </option>
                   {Object.entries(KINDS).map(([key, label]) => (
                     <option key={key} value={key}>
                       {label}
@@ -392,6 +498,7 @@ export function AliExpressImport() {
                       className="mt-1 size-4 shrink-0"
                       aria-label={`Выбрать показанные товары заказа ${orderId}`}
                       checked={rows.every((row) => Boolean(selected[row.id]))}
+                      disabled={rows.every((row) => row.ignored)}
                       onChange={(e) => choose(rows, e.target.checked)}
                     />
                     <div className="min-w-0 flex-1">
@@ -416,7 +523,9 @@ export function AliExpressImport() {
                   {rows.map((row) => {
                     const draft = selected[row.id];
                     const component = analysis.components.find(
-                      (item) => item.id === draft?.componentId,
+                      (item) =>
+                        item.id ===
+                        (draft?.componentId || row.binding?.componentId),
                     );
                     return (
                       <div
@@ -429,6 +538,7 @@ export function AliExpressImport() {
                             className="mt-1 size-4 shrink-0"
                             aria-label={`Выбрать товар ${row.title} (${row.sku || row.orderId})`}
                             checked={Boolean(draft)}
+                            disabled={row.ignored}
                             onChange={(e) => choose([row], e.target.checked)}
                           />
                           {row.imageUrl ? (
@@ -461,56 +571,91 @@ export function AliExpressImport() {
                             <span
                               className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs ${row.kind === "review" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-[var(--color-surface-2)] text-[var(--color-muted)]"}`}
                             >
-                              {KINDS[row.kind]}
+                              {row.ignored ? "Скрыт" : KINDS[row.kind]}
                             </span>
                           </div>
                         </div>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          {component ? (
+                            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                              ✓ В каталоге компонентов
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[var(--color-muted)]">
+                              {row.ignored
+                                ? "Не показывается при следующих импортах"
+                                : "Ещё не связан с компонентом"}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className="py-2 text-xs text-[var(--color-accent)]"
+                            disabled={busy}
+                            onClick={() => void visibility(row)}
+                          >
+                            {row.ignored
+                              ? "Вернуть в импорт"
+                              : "Больше не показывать"}
+                          </button>
+                        </div>
+                        {component ? (
+                          <div className="mt-2 max-w-56">
+                            <ComponentCard item={component} newTab />
+                          </div>
+                        ) : draft?.componentDraft ? (
+                          <div className="mt-2 max-w-56">
+                            <ComponentCard
+                              item={{
+                                id: row.id,
+                                data: {
+                                  ...draft.componentDraft.data,
+                                  purchases:
+                                    draft.componentDraft.data.purchases?.map(
+                                      (purchase) =>
+                                        purchase.id === `ali-source-${row.id}`
+                                          ? {
+                                              ...purchase,
+                                              quantity:
+                                                draft.quantity === ""
+                                                  ? undefined
+                                                  : Number(draft.quantity),
+                                              status: draft.status,
+                                            }
+                                          : purchase,
+                                    ),
+                                },
+                                createdAt: "",
+                                updatedAt: "",
+                              }}
+                              readOnly
+                            />
+                          </div>
+                        ) : null}
                         {draft ? (
                           <div className="mt-4 flex flex-col gap-3">
-                            <Field
-                              label="Компонент"
-                              htmlFor={`component-${row.id}`}
-                            >
-                              <Select
-                                id={`component-${row.id}`}
-                                value={draft.componentId}
-                                disabled={Boolean(row.binding)}
-                                onChange={(e) =>
-                                  edit(row.id, {
-                                    componentId: e.target.value,
-                                    purchaseId: "",
-                                    quantityEdited: false,
-                                    statusEdited: false,
-                                    quantity: String(row.quantity ?? ""),
-                                    status: row.status,
-                                  })
-                                }
-                              >
-                                <option value="">
-                                  + Создать новый компонент
-                                </option>
-                                {analysis.components.map((item) => (
-                                  <option key={item.id} value={item.id}>
-                                    {item.name}
-                                  </option>
-                                ))}
-                              </Select>
-                            </Field>
-                            {!draft.componentId ? (
-                              <Field
-                                label="Название компонента"
-                                htmlFor={`name-${row.id}`}
-                              >
-                                <Input
-                                  id={`name-${row.id}`}
-                                  value={draft.name}
-                                  maxLength={200}
-                                  required
-                                  onChange={(e) =>
-                                    edit(row.id, { name: e.target.value })
+                            {!row.binding ? (
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() =>
+                                    openWorkspace(row.id, "choose")
                                   }
-                                />
-                              </Field>
+                                >
+                                  {component
+                                    ? "Выбрать другой компонент"
+                                    : "Выбрать из каталога"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => openWorkspace(row.id, "new")}
+                                >
+                                  {draft.componentDraft && !draft.componentId
+                                    ? "Редактировать новую карточку"
+                                    : "Создать новый компонент"}
+                                </Button>
+                              </div>
                             ) : null}
                             {component ? (
                               <Field

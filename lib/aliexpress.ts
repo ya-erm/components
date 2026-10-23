@@ -1,7 +1,18 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { type Catalog, parseCatalog } from "./catalog";
-import { type Purchase, PURCHASE_LABELS, componentDataSchema } from "./schema";
+import {
+  type Catalog,
+  type CatalogItem,
+  parseCatalog,
+  mergeLogistics,
+} from "./catalog";
+import {
+  type Purchase,
+  type Logistics,
+  PURCHASE_LABELS,
+  componentDataSchema,
+  logisticsSchema,
+} from "./schema";
 
 const text = z.string().trim().max(4000).nullish();
 const url = z
@@ -81,6 +92,12 @@ export const aliSelectionSchema = z.object({
   componentId: z.string().min(1).max(200).optional(),
   purchaseId: z.string().min(1).max(200).optional(),
   name: z.string().trim().min(1).max(200).optional(),
+  componentDraft: z
+    .object({
+      data: componentDataSchema,
+      logistics: logisticsSchema.optional(),
+    })
+    .optional(),
   unitsPerPack: quantity.positive().default(1),
   quantity: quantity.nullable().optional(),
   status: z
@@ -104,6 +121,7 @@ export type AliRow = {
   trackingNumbers: string[];
   kind: "new" | "changed" | "unchanged" | "review";
   warnings: string[];
+  ignored: boolean;
   binding?: {
     componentId: string;
     purchaseId: string;
@@ -115,9 +133,13 @@ export type AliRow = {
 };
 export type AliAnalysis = {
   rows: AliRow[];
+  logistics: Logistics;
   components: {
     id: string;
     name: string;
+    data: CatalogItem["data"];
+    createdAt: string;
+    updatedAt: string;
     purchases: {
       id: string;
       order: string;
@@ -133,10 +155,14 @@ export type AliPreview = {
   token: string;
   changes: {
     rowId: string;
+    orderNumber: string;
     componentId: string;
     name: string;
     action: string;
     details: string[];
+    before?: CatalogItem;
+    after: CatalogItem;
+    fields: { label: string; before: string; after: string }[];
   }[];
   warnings: string[];
   created: number;
@@ -216,6 +242,34 @@ function sourceRows(data: AliExport) {
       };
     });
   });
+}
+
+export function planAliVisibility(
+  catalog: Catalog,
+  data: AliExport,
+  rowIds: string[],
+  hidden: boolean,
+): Catalog {
+  if (!rowIds.length) throw new AliImportError("Выберите товар");
+  const rows = new Map(sourceRows(data).map((row) => [row.id, row]));
+  const ignored = new Map(
+    (catalog.ignoredAliItems ?? []).map((item) => [item.id, item]),
+  );
+  for (const rowId of rowIds) {
+    const row = rows.get(rowId);
+    if (!row) throw new AliImportError("Товар не найден в выгрузке");
+    const id = stableId("hidden", [row.order.order_id, row.key]);
+    if (hidden)
+      ignored.set(id, {
+        id,
+        orderId: row.order.order_id,
+        itemKey: row.key,
+        title: row.item.title ?? "Без названия",
+        createdAt: new Date().toISOString(),
+      });
+    else ignored.delete(id);
+  }
+  return parseCatalog({ ...catalog, ignoredAliItems: [...ignored.values()] });
 }
 type SourceRow = ReturnType<typeof sourceRows>[number];
 
@@ -497,6 +551,10 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
         trackingNumbers: row.order.tracking_numbers,
         kind,
         warnings: [...new Set(warnings)],
+        ignored: (catalog.ignoredAliItems ?? []).some(
+          (item) =>
+            item.orderId === row.order.order_id && item.itemKey === row.key,
+        ),
         binding: binding
           ? {
               componentId: binding.component.id,
@@ -516,10 +574,18 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
     );
   return {
     rows,
+    logistics: {
+      orders: catalog.orders,
+      shipments: catalog.shipments,
+      projects: catalog.projects,
+    },
     components: catalog.items
       .map((item) => ({
         id: item.id,
         name: item.data.name,
+        data: item.data,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
         purchases: (item.data.purchases ?? []).map((p) => ({
           id: p.id,
           order:
@@ -555,6 +621,13 @@ export function planAliImport(
   for (const selection of selections) {
     const row = rows.get(selection.rowId);
     if (!row) throw new AliImportError("Товар не найден в выгрузке");
+    if (
+      (catalog.ignoredAliItems ?? []).some(
+        (item) =>
+          item.orderId === row.order.order_id && item.itemKey === row.key,
+      )
+    )
+      throw new AliImportError("Товар скрыт. Сначала верните его в импорт.");
     const automatic = findBinding(next, row);
     const componentId = selection.componentId ?? automatic?.component.id;
     let component = componentId
@@ -592,23 +665,71 @@ export function planAliImport(
       );
     if (targetKey) touched.add(targetKey);
     const isNewComponent = !component;
+    if (component && selection.componentDraft && !automatic)
+      throw new AliImportError(
+        "Черновик предназначен только для нового компонента",
+      );
     if (!component) {
-      const name = selection.name ?? clean(row.item.title)?.slice(0, 200);
+      const name =
+        selection.componentDraft?.data.name ??
+        selection.name ??
+        clean(row.item.title)?.slice(0, 200);
       if (!name) throw new AliImportError("Укажите название нового компонента");
       const id = stableId("component", row.id);
       if (next.items.some((item) => item.id === id))
         throw new AliImportError(
           "Компонент уже импортирован. Выберите существующую покупку.",
         );
+      const draft = selection.componentDraft;
+      const draftSourceOrder = `ali-source-${row.id}`;
+      if (draft?.logistics) {
+        const patch = {
+          ...draft.logistics,
+          orders: draft.logistics.orders.filter(
+            (o) => o.id !== draftSourceOrder,
+          ),
+        };
+        for (const collection of [
+          patch.orders,
+          patch.projects ?? [],
+          patch.shipments,
+        ]) {
+          for (const incoming of collection) {
+            const existing = [
+              ...next.orders,
+              ...next.projects,
+              ...next.shipments,
+            ].find((entry) => entry.id === incoming.id);
+            if (
+              existing &&
+              JSON.stringify(existing) !== JSON.stringify(incoming)
+            )
+              throw new AliConflictError(
+                "Заказ или проект изменился. Откройте форму заново.",
+              );
+          }
+        }
+        const merged = mergeLogistics(next, patch);
+        next.orders = merged.orders;
+        next.projects = merged.projects;
+        next.shipments = merged.shipments;
+      }
       component = {
         id,
-        data: componentDataSchema.parse({
-          name,
-          images: row.item.image_url ? [row.item.image_url] : [],
-          url: clean(row.item.product_url),
-          purchases: [],
-          usages: [],
-        }),
+        data: draft
+          ? componentDataSchema.parse({
+              ...draft.data,
+              purchases: (draft.data.purchases ?? []).filter(
+                (p) => p.id !== draftSourceOrder,
+              ),
+            })
+          : componentDataSchema.parse({
+              name,
+              images: row.item.image_url ? [row.item.image_url] : [],
+              url: clean(row.item.product_url),
+              purchases: [],
+              usages: [],
+            }),
         createdAt: data.exported_at,
         updatedAt: data.exported_at,
       };
@@ -616,6 +737,27 @@ export function planAliImport(
     }
     const isNewPurchase = !purchase;
     const orderResult = applyOrder(next, row, data.exported_at, purchase);
+    const draftOrder = selection.componentDraft?.logistics?.orders.find(
+      (o) => o.id === `ali-source-${row.id}`,
+    );
+    if (draftOrder && isNewComponent) {
+      if (draftOrder.number !== row.order.order_id)
+        orderResult.order.number = draftOrder.number;
+      if (draftOrder.url && draftOrder.url !== row.order.order_url)
+        orderResult.order.url = draftOrder.url;
+      orderResult.order.comments = [
+        ...orderResult.order.comments,
+        ...draftOrder.comments.filter(
+          (c) => !orderResult.order.comments.some((p) => p.id === c.id),
+        ),
+      ];
+      orderResult.order.trackingNumbers = [
+        ...new Set([
+          ...orderResult.order.trackingNumbers,
+          ...draftOrder.trackingNumbers,
+        ]),
+      ];
+    }
     if (!purchase) {
       const id = stableId("purchase", row.id);
       if (
@@ -706,6 +848,7 @@ export function planAliImport(
     else unchanged++;
     changes.push({
       rowId: row.id,
+      orderNumber: row.order.order_id,
       componentId: component.id,
       name: component.data.name,
       action: isNewComponent
@@ -716,6 +859,38 @@ export function planAliImport(
             ? "Обновить покупку"
             : "Без изменений",
       details,
+      before: catalog.items.find((item) => item.id === component!.id),
+      after: structuredClone(component),
+      fields: [
+        ...(isNewPurchase || previous.quantity !== result.purchase.quantity
+          ? [
+              {
+                label: "Количество покупки",
+                before: isNewPurchase ? "—" : String(previous.quantity ?? "?"),
+                after: String(result.purchase.quantity ?? "?"),
+              },
+            ]
+          : []),
+        ...(isNewPurchase || previous.status !== result.purchase.status
+          ? [
+              {
+                label: "Статус покупки",
+                before: isNewPurchase ? "—" : PURCHASE_LABELS[previous.status],
+                after: PURCHASE_LABELS[result.purchase.status],
+              },
+            ]
+          : []),
+        ...(JSON.stringify(oldOrder?.trackingNumbers ?? []) !==
+        JSON.stringify(orderResult.order.trackingNumbers)
+          ? [
+              {
+                label: "Трек-номер",
+                before: oldOrder?.trackingNumbers.join(", ") || "—",
+                after: orderResult.order.trackingNumbers.join(", ") || "—",
+              },
+            ]
+          : []),
+      ],
     });
   }
   // Полная проверка связей, количеств и схемы до единственной записи в хранилище.
@@ -725,7 +900,10 @@ export function planAliImport(
     catalog: validated,
     preview: {
       token,
-      changes,
+      changes: changes.map((change) => ({
+        ...change,
+        after: validated.items.find((item) => item.id === change.componentId)!,
+      })),
       warnings: [...warnings],
       created,
       updated,

@@ -162,6 +162,32 @@ assert.equal(
   ).status,
   412,
 );
+// Скрытие сохраняется в каталоге и резервной копии; восстановление возвращает товар.
+const hiddenResponse = await req("/api/components/aliexpress", {
+  action: "hide",
+  data,
+  rowIds: [rows.rows[0].id],
+});
+assert.equal(hiddenResponse.status, 200);
+assert.equal((await hiddenResponse.json()).rows[0].ignored, true);
+assert.equal((await ali("analyze")).rows[0].ignored, true);
+await ali("preview", selections, undefined, data, 400);
+const hiddenBackup = await (await req("/api/components/export")).json();
+assert.ok(
+  hiddenBackup.ignoredAliItems.some(
+    (item) => item.orderId === data.orders[0].order_id,
+  ),
+);
+assert.equal((await req("/api/components/import", hiddenBackup)).status, 200);
+assert.equal((await ali("analyze")).rows[0].ignored, true);
+const restoreResponse = await req("/api/components/aliexpress", {
+  action: "restore",
+  data,
+  rowIds: [rows.rows[0].id],
+});
+assert.equal(restoreResponse.status, 200);
+assert.equal((await restoreResponse.json()).rows[0].ignored, false);
+
 console.log(
   "AliExpress API: analyze/preview are read-only; apply, exact replay, delivery update, stale preview 409, backup round trip and S3 conditional write passed.",
 );

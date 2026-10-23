@@ -59,6 +59,7 @@ export async function POST(req: Request) {
     orders: envelope.orders,
     shipments: envelope.shipments,
     projects: envelope.projects,
+    ignoredAliItems: envelope.ignoredAliItems,
   });
   if (!logistics.success)
     return NextResponse.json(
