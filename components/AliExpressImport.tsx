@@ -58,6 +58,21 @@ type Draft = {
   statusEdited: boolean;
   componentDraft?: AliSelection["componentDraft"];
 };
+function ImportChange({ value }: { value: string }) {
+  const colon = value.indexOf(": ");
+  const label = colon < 0 ? "" : value.slice(0, colon + 1);
+  const detail = colon < 0 ? value : value.slice(colon + 2);
+  const arrow = detail.indexOf(" → ");
+  return (
+    <li>
+      {label ? <><span className="text-[var(--color-muted)]">{label}</span>{" "}</> : null}
+      {arrow < 0 ? detail : <>
+        <span className="text-[var(--color-muted)]">{detail.slice(0, arrow)} → </span>
+        <span className="font-medium">{detail.slice(arrow + 3)}</span>
+      </>}
+    </li>
+  );
+}
 function initialDraft(row: AliRow): Draft {
   return {
     componentId: row.binding?.componentId ?? "",
@@ -110,6 +125,12 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preferences, setPreferences] = useState<ImportPreferences>(() => readImportPreferences(null));
+  const [hidingOrders, setHidingOrders] = useState<Set<string>>(() => new Set());
+  const hideTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = hideTimers.current;
+    return () => { for (const timer of timers.values()) clearTimeout(timer); };
+  }, []);
   const [workspace, setWorkspace] = useState<{
     rowId: string;
     mode: "choose" | "new";
@@ -230,7 +251,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
     }
   }, [analysis, data, ownerId]);
   const displayRows = analysis?.rows.map((row) => ({
-    ...row, ignored: isOrderIgnored(preferences, "AliExpress", row.orderId),
+    ...row, ignored: !hidingOrders.has(row.orderId) && isOrderIgnored(preferences, "AliExpress", row.orderId),
   })) ?? [];
   useEffect(() => {
     const hidden = new Set(analysis?.rows.filter((row) => isOrderIgnored(preferences, "AliExpress", row.orderId)).map((row) => row.id));
@@ -266,6 +287,9 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   }
 
   function resetDraft() {
+    for (const timer of hideTimers.current.values()) clearTimeout(timer);
+    hideTimers.current.clear();
+    setHidingOrders(new Set());
     setFileName("");
     setPreview(null);
     setShowPreview(false);
@@ -361,6 +385,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   }
 
   function visibility(row: AliRow) {
+    if (hidingOrders.has(row.orderId)) return;
     setError("");
     const next = setOrderIgnored(preferences, "AliExpress", row.orderId, !row.ignored);
     try {
@@ -370,6 +395,17 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
       return;
     }
     setPreferences(next);
+    if (!row.ignored && !matchesAliKinds({ ...row, ignored: true }, kinds)) {
+      setHidingOrders((current) => new Set(current).add(row.orderId));
+      hideTimers.current.set(row.orderId, setTimeout(() => {
+        hideTimers.current.delete(row.orderId);
+        setHidingOrders((current) => {
+          const next = new Set(current);
+          next.delete(row.orderId);
+          return next;
+        });
+      }, 240));
+    }
     const rowIds = displayRows.filter((item) => item.orderId === row.orderId).map((item) => item.id);
     if (!row.ignored) setSelected((previous) => Object.fromEntries(
       Object.entries(previous).filter(([id]) => !rowIds.includes(id)),
@@ -714,8 +750,14 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
             {[...groups].map(([orderId, rows]) => {
               const first = rows[0];
               return (
-                <section
+                <div
                   key={orderId}
+                  className="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
+                  style={{ gridTemplateRows: hidingOrders.has(orderId) ? "0fr" : "1fr", opacity: hidingOrders.has(orderId) ? 0 : 1 }}
+                  inert={hidingOrders.has(orderId)}
+                >
+                <div className="min-h-0 overflow-hidden">
+                <section
                   aria-label={`Заказ ${orderId}`}
                   className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]"
                 >
@@ -800,11 +842,6 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                             >
                               {row.ignored ? "Скрыт" : KINDS[row.kind]}
                             </span>
-                            {!row.ignored && row.changes?.length ? (
-                              <ul className="mt-2 space-y-1 text-xs text-[var(--color-accent)]" aria-label="Что изменится">
-                                {row.changes.map((change) => <li key={change}>{change}</li>)}
-                              </ul>
-                            ) : null}
                             {row.productUrl ? (
                               <a
                                 href={row.productUrl}
@@ -831,8 +868,8 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                           )}
                           <button
                             type="button"
-                            className="py-2 text-xs text-[var(--color-accent)]"
-                            disabled={busy}
+                            className="rounded-lg px-3 py-2 text-xs text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent)]/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:pointer-events-none"
+                            disabled={busy || hidingOrders.has(orderId)}
                             onClick={() => void visibility(row)}
                           >
                             {row.ignored
@@ -840,12 +877,13 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                               : "Больше не показывать заказ"}
                           </button>
                         </div>
+                        <div className="mt-2 flex flex-col items-start gap-4 sm:flex-row">
                         {component ? (
-                          <div className="mt-2 max-w-56">
+                          <div className="w-full max-w-56 shrink-0">
                             <ComponentCard item={component} newTab />
                           </div>
                         ) : draft?.componentDraft ? (
-                          <div className="mt-2 max-w-56">
+                          <div className="w-full max-w-56 shrink-0">
                             <ComponentCard
                               item={{
                                 id: row.id,
@@ -873,6 +911,15 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                             />
                           </div>
                         ) : null}
+                        {!row.ignored && row.changes?.length ? (
+                          <div className="min-w-0 flex-1">
+                            <p className="mb-2 text-sm font-medium">Что изменится</p>
+                            <ul className="space-y-1 text-xs [overflow-wrap:anywhere]" aria-label="Что изменится">
+                              {row.changes.map((change) => <ImportChange key={change} value={change} />)}
+                            </ul>
+                          </div>
+                        ) : null}
+                        </div>
                         {draft ? (
                           <div className="mt-4 flex flex-col gap-3">
                             {!row.binding ? (
@@ -1049,6 +1096,8 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                     );
                   })}
                 </section>
+                </div>
+                </div>
               );
             })}
             <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4">
