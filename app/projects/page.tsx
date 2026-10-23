@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { readCatalog } from "@/lib/components-repo";
 import { AppHeader, BackLink } from "@/components/AppHeader";
+import { ProjectCard } from "@/components/ProjectCard";
+import { ButtonLink } from "@/components/ui/Button";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +16,9 @@ export default async function ProjectsPage() {
     <>
       <AppHeader title="Проекты" left={<BackLink href="/components" />} />
       <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-5">
-        <p className="text-sm text-[var(--color-muted)]">
-          Создайте или выберите проект в разделе «Использование» компонента.
-        </p>
+        <ButtonLink href="/projects/new" className="self-start">
+          Новый проект
+        </ButtonLink>
         {catalog.projects.length === 0 ? (
           <p className="text-sm text-[var(--color-muted)]">
             Проектов пока нет.
@@ -45,7 +47,15 @@ export default async function ProjectsPage() {
               key={project.id}
               className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
             >
-              <h2 className="mb-3 text-lg font-semibold">{project.name}</h2>
+              <Link
+                href={`/projects/${encodeURIComponent(project.id)}`}
+                className="mb-3 block rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+              >
+                <ProjectCard project={project} />
+                <span className="mt-2 block text-xs text-[var(--color-accent)]">
+                  Открыть проект ↗
+                </span>
+              </Link>
               <ul className="flex flex-col gap-2">
                 {components.map((component) => (
                   <li key={component.id}>

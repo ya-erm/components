@@ -3,6 +3,7 @@ import { getJson, putJson } from "@/lib/s3";
 import {
   type ComponentData,
   type Logistics,
+  type Project,
   hasInventoryStatus,
 } from "@/lib/schema";
 import {
@@ -11,6 +12,7 @@ import {
   mergeLogistics,
   validateCatalog,
   normalizeCatalog,
+  CatalogValidationError,
 } from "@/lib/catalog";
 
 export const PAGE_SIZE = 50;
@@ -49,6 +51,18 @@ async function writeCatalog(
 export async function getLogistics(ownerId: string): Promise<Logistics> {
   const { orders, shipments, projects } = await readCatalog(ownerId);
   return { orders, shipments, projects };
+}
+
+export async function saveProject(ownerId: string, project: Project, create: boolean): Promise<Project | null> {
+  const catalog = await readCatalog(ownerId);
+  const index = catalog.projects.findIndex((value) => value.id === project.id);
+  if (create && index !== -1)
+    throw new CatalogValidationError("Проект уже существует");
+  if (!create && index === -1) return null;
+  if (create) catalog.projects.push(project);
+  else catalog.projects[index] = project;
+  const saved = await writeCatalog(ownerId, catalog);
+  return saved.projects.find((value) => value.id === project.id)!;
 }
 
 function toDTO(item: StoredItem): ComponentDTO {

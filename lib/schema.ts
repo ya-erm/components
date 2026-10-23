@@ -105,6 +105,19 @@ export const orderSchema = z.object({
 export const projectSchema = z.object({
   id: identifier,
   name: z.string().trim().min(1, "Укажите название проекта").max(200),
+  description: optionalText(20000),
+  images: z
+    .array(
+      z
+        .string()
+        .url()
+        .refine(
+          (value) => /^https?:\/\//i.test(value),
+          "Укажите ссылку http или https",
+        ),
+    )
+    .max(MAX_IMAGES)
+    .optional(),
 });
 export type Project = z.infer<typeof projectSchema>;
 export const PURCHASE_STATUSES = [
