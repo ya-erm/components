@@ -12,6 +12,17 @@ type Option<T extends string> = {
   status?: ComponentStatus | Purchase["status"];
 };
 
+const STATUS_COLOR: Record<ComponentStatus | Purchase["status"], string> = {
+  in_stock: "text-emerald-700 dark:text-emerald-300",
+  in_transit: "text-amber-800 dark:text-amber-300",
+  planned: "text-violet-700 dark:text-violet-300",
+  used: "text-blue-700 dark:text-blue-300",
+  unassigned: "text-slate-600 dark:text-slate-300",
+  out_of_stock: "text-red-700 dark:text-red-300",
+  delivered: "text-emerald-700 dark:text-emerald-300",
+  cancelled: "text-red-700 dark:text-red-300",
+};
+
 export function StatusSelect<T extends string>({
   id,
   value,
@@ -76,6 +87,7 @@ export function StatusSelect<T extends string>({
         className={clsx(
           controlClass,
           "flex items-center gap-2 text-left",
+          selected?.status && STATUS_COLOR[selected.status],
           className,
         )}
         onClick={() => setOpen((previous) => !previous)}
@@ -140,7 +152,9 @@ export function StatusSelect<T extends string>({
               tabIndex={option.value === selected?.value ? 0 : -1}
               className={clsx(
                 "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm outline-none hover:bg-[var(--color-surface-2)] focus:bg-[var(--color-surface-2)]",
-                option.value === value && "font-medium text-[var(--color-accent)]",
+                option.status && STATUS_COLOR[option.status],
+                option.value === value &&
+                  "bg-[var(--color-surface-2)] font-medium",
               )}
               onClick={() => {
                 onChange(option.value);
@@ -154,6 +168,9 @@ export function StatusSelect<T extends string>({
                 <span className="size-4 shrink-0" />
               )}
               {option.label}
+              <span className="ml-auto w-4 shrink-0" aria-hidden="true">
+                {option.value === value ? "✓" : null}
+              </span>
             </button>
           ))}
         </div>
