@@ -28,6 +28,7 @@ import {
   logisticsPatch,
 } from "@/components/ComponentLedgerEditor";
 import { Spinner } from "@/components/ui/states";
+import { componentReturnTarget, updateSavedComponent } from "@/lib/component-list-state";
 
 const FORM_ID = "component-form";
 
@@ -98,6 +99,7 @@ export function ComponentForm({
 }: Props) {
   const router = useRouter();
   const isEdit = Boolean(id);
+  const returnTarget = componentReturnTarget(`/components/${id}`, backHref);
 
   const [name, setName] = useState(initial?.name ?? "");
   const [images, setImages] = useState<string[]>(initial?.images ?? []);
@@ -224,8 +226,10 @@ export function ComponentForm({
         setFormError(data.error ?? "Не удалось сохранить");
         return;
       }
-      await res.json();
-      router.push(backHref);
+      const saved = await res.json();
+      updateSavedComponent(saved);
+      router.push(returnTarget.href, { scroll: returnTarget.scroll });
+      router.refresh();
     } catch {
       setFormError("Сетевая ошибка. Попробуйте ещё раз.");
     } finally {
@@ -237,7 +241,7 @@ export function ComponentForm({
     <>
       <AppHeader
         title={title}
-        left={<BackLink href={backHref} />}
+        left={<BackLink href={returnTarget.href} scroll={returnTarget.scroll} />}
         right={
           <button
             type="submit"

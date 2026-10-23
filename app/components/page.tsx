@@ -18,7 +18,9 @@ type CollapsedGroupsByGroup = { type: string[]; tag: string[] };
 const VIEW_MODE_COOKIE_NAME = "components-view-mode";
 const COLLAPSED_GROUPS_COOKIE_PREFIX = "components-collapsed-groups";
 
-export default async function ComponentsPage() {
+export default async function ComponentsPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ownerId = await currentUserId();
   if (!ownerId) redirect("/login");
 
@@ -28,8 +30,15 @@ export default async function ComponentsPage() {
     type: parseCollapsedGroupsCookie(cookieStore.get(`${COLLAPSED_GROUPS_COOKIE_PREFIX}-type`)?.value),
     tag: parseCollapsedGroupsCookie(cookieStore.get(`${COLLAPSED_GROUPS_COOKIE_PREFIX}-tag`)?.value),
   };
-  const initial = await listComponents({ ownerId, all: true });
-  const catalogVersion = `${initial.total}:${initial.items[0]?.updatedAt ?? "empty"}`;
+  const filters = await searchParams;
+  const initial = await listComponents({
+    ownerId,
+    all: true,
+    query: firstParam(filters.q),
+    status: firstParam(filters.status),
+    type: firstParam(filters.type),
+    tag: firstParam(filters.tag),
+  });
 
   return (
     <>
@@ -71,7 +80,8 @@ export default async function ComponentsPage() {
         <div className="mx-auto max-w-5xl px-4 pb-5">
           <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}>
             <ComponentGrid
-              key={catalogVersion}
+              key={ownerId}
+              ownerId={ownerId}
               initial={initial}
               initialViewMode={initialViewMode}
               initialCollapsedGroups={initialCollapsedGroups}
@@ -81,6 +91,10 @@ export default async function ComponentsPage() {
       </PullToRefresh>
     </>
   );
+}
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function parseViewMode(value: string | undefined): ViewMode {
