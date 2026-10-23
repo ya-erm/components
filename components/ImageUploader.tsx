@@ -10,12 +10,10 @@ const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/avif";
 export function ImageUploader({
   value,
   onChange,
-  readOnly = false,
   onUploadingChange,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
-  readOnly?: boolean;
   onUploadingChange?: (uploading: boolean) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,7 +95,6 @@ export function ImageUploader({
   }, []);
 
   useEffect(() => {
-    if (readOnly) return;
     function onPaste(event: ClipboardEvent) {
       const items = event.clipboardData?.items;
       if (!items) return;
@@ -116,7 +113,7 @@ export function ImageUploader({
 
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [value, uploading, readOnly]);
+  }, [value, uploading]);
 
   useEffect(() => {
     if (viewerIndex == null) return;
@@ -132,7 +129,7 @@ export function ImageUploader({
   }, [viewerIndex]);
 
   async function handleFiles(files: File[]) {
-    if (readOnly || uploading || files.length === 0) return;
+    if (uploading || files.length === 0) return;
     setError(null);
 
     if (value.length + files.length > MAX_IMAGES) {
@@ -380,14 +377,14 @@ export function ImageUploader({
 
   return (
     <div className="flex flex-col gap-2">
-      {!readOnly ? <input
+      <input
         ref={inputRef}
         type="file"
         accept={ACCEPT}
         multiple
         hidden
         onChange={(e) => handleFiles(Array.from(e.target.files ?? []))}
-      /> : null}
+      />
 
       <div className="h-32 overflow-x-auto rounded-xl sm:h-36">
         <ul className="flex h-full min-w-0 gap-2 pb-1">
@@ -413,7 +410,7 @@ export function ImageUploader({
             </li>
           ))}
 
-          {!readOnly ? <li className="aspect-square h-full shrink-0">
+          <li className="aspect-square h-full shrink-0">
             <button
               type="button"
               onClick={openInput}
@@ -423,7 +420,7 @@ export function ImageUploader({
             >
               {uploading ? <Spinner /> : <PlusIcon className="size-7" />}
             </button>
-          </li> : null}
+          </li>
         </ul>
       </div>
 
@@ -516,7 +513,7 @@ export function ImageUploader({
 
             {optionsOpen ? (
               <div className="pointer-events-auto absolute right-[calc(env(safe-area-inset-right)+0.75rem)] top-[calc(env(safe-area-inset-top)+3.5rem)] w-56 overflow-hidden rounded-xl border border-white/10 bg-neutral-950/95 py-1 text-sm text-white shadow-2xl backdrop-blur">
-                {!readOnly && viewerIndex !== 0 ? (
+                {viewerIndex !== 0 ? (
                   <MenuButton
                     icon={<StarIcon className="size-4" />}
                     onClick={() => makeMain(viewerIndex!)}
@@ -524,7 +521,7 @@ export function ImageUploader({
                     Сделать основным
                   </MenuButton>
                 ) : null}
-                {!readOnly && canGoPrev ? (
+                {canGoPrev ? (
                   <MenuButton
                     icon={<ArrowLeftIcon className="size-4" />}
                     onClick={() => move(viewerIndex!, -1)}
@@ -532,7 +529,7 @@ export function ImageUploader({
                     Переместить влево
                   </MenuButton>
                 ) : null}
-                {!readOnly && canGoNext ? (
+                {canGoNext ? (
                   <MenuButton
                     icon={<ArrowRightIcon className="size-4" />}
                     onClick={() => move(viewerIndex!, 1)}
@@ -546,13 +543,13 @@ export function ImageUploader({
                 >
                   Скачать
                 </MenuButton>
-                {!readOnly ? <MenuButton
+                <MenuButton
                   icon={<TrashIcon className="size-4" />}
                   danger
                   onClick={() => requestDelete(viewerIndex!)}
                 >
                   Удалить
-                </MenuButton> : null}
+                </MenuButton>
               </div>
             ) : null}
           </div>

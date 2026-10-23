@@ -2,17 +2,17 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { projectSchema, type Project } from "@/lib/schema";
+import { projectSchema } from "@/lib/schema";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { ImageUploader } from "@/components/ImageUploader";
 import { ProjectDescription } from "@/components/ProjectDescription";
 
-export function ProjectForm({ initial }: { initial?: Project }) {
+export function ProjectForm() {
   const router = useRouter();
-  const [name, setName] = useState(initial?.name ?? "");
-  const [description, setDescription] = useState(initial?.description ?? "");
-  const [images, setImages] = useState(initial?.images ?? []);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [images, setImages] = useState<string[]>([]);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -22,7 +22,7 @@ export function ProjectForm({ initial }: { initial?: Project }) {
     if (saving || uploading) return;
     setError(null);
     const parsed = projectSchema.safeParse({
-      id: initial?.id ?? crypto.randomUUID(),
+      id: crypto.randomUUID(),
       name,
       description,
       images,
@@ -33,16 +33,11 @@ export function ProjectForm({ initial }: { initial?: Project }) {
     }
     setSaving(true);
     try {
-      const response = await fetch(
-        initial
-          ? `/api/projects/${encodeURIComponent(initial.id)}`
-          : "/api/projects",
-        {
-          method: initial ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsed.data),
-        },
-      );
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error ?? "Не удалось сохранить проект");
