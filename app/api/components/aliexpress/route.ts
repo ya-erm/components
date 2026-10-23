@@ -4,7 +4,7 @@ import { currentUserId } from "@/lib/session";
 import {
   readCatalog,
   applyAliImport,
-  setAliVisibility,
+  acknowledgeImportPreferences,
 } from "@/lib/components-repo";
 import {
   aliExportSchema,
@@ -18,11 +18,13 @@ import { CatalogValidationError } from "@/lib/catalog";
 
 export const runtime = "nodejs";
 const requestSchema = z.object({
-  action: z.enum(["analyze", "preview", "apply", "hide", "restore"]),
+  action: z.enum(["analyze", "preview", "apply", "ackImportPreferences"]),
   data: aliExportSchema,
   selections: z.array(aliSelectionSchema).max(5000).default([]),
   token: z.string().max(100).optional(),
-  rowIds: z.array(z.string().max(100)).max(5000).optional(),
+  preferences: z.array(z.object({
+    source: z.string().min(1).max(200), id: z.string().min(1).max(200),
+  })).max(10000).default([]),
 });
 
 export async function POST(req: Request) {
@@ -37,13 +39,8 @@ export async function POST(req: Request) {
     );
   try {
     const input = requestSchema.parse(JSON.parse(raw));
-    if (input.action === "hide" || input.action === "restore") {
-      const catalog = await setAliVisibility(
-        ownerId,
-        input.data,
-        input.rowIds ?? [],
-        input.action === "hide",
-      );
+    if (input.action === "ackImportPreferences") {
+      const catalog = await acknowledgeImportPreferences(ownerId, input.preferences);
       return NextResponse.json(analyzeAli(catalog, input.data));
     }
     if (input.action === "apply") {

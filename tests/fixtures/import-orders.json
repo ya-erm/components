@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-10-23T12:00:00.000Z",
+  "orders": [{
+    "order_id": "ui-order",
+    "date": "Oct 12, 2026",
+    "status": "Completed",
+    "store": "Test boards",
+    "order_url": "https://example.com/orders/ui-order",
+    "tracking_numbers": ["UI-TRACK-1", "UI-TRACK-2"],
+    "items": [{
+      "title": "ESP32 — товар из выгрузки",
+      "product_url": "https://www.aliexpress.com/item/6677.html",
+      "sku": "S3",
+      "quantity": 3
+    }, {
+      "title": "Новый светодиод",
+      "product_url": "https://www.aliexpress.com/item/6688.html",
+      "quantity": 5
+    }]
+  }]
+}

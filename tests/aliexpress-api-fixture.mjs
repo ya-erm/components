@@ -162,59 +162,39 @@ assert.equal(
   ).status,
   412,
 );
-// Скрытие сохраняется в каталоге и резервной копии; восстановление возвращает товар.
-const hiddenResponse = await req("/api/components/aliexpress", {
-  action: "hide",
-  data,
-  rowIds: [rows.rows[0].id],
-});
-assert.equal(hiddenResponse.status, 200);
-assert.equal((await hiddenResponse.json()).rows[0].ignored, true);
-assert.equal((await ali("analyze")).rows[0].ignored, true);
-await ali("preview", selections, undefined, data, 400);
-const hiddenBackup = await (await req("/api/components/export")).json();
-assert.ok(
-  hiddenBackup.ignoredAliItems.some(
-    (item) => item.orderId === data.orders[0].order_id,
-  ),
-);
-assert.equal((await req("/api/components/import", hiddenBackup)).status, 200);
-assert.equal((await ali("analyze")).rows[0].ignored, true);
-const restoreResponse = await req("/api/components/aliexpress", {
-  action: "restore",
-  data,
-  rowIds: [rows.rows[0].id],
-});
-assert.equal(restoreResponse.status, 200);
-assert.equal((await restoreResponse.json()).rows[0].ignored, false);
-
-// Возврат на страницу может повторить ещё выполняющийся запрос скрытия.
-const concurrentData = structuredClone(data);
-concurrentData.orders[0].items.push({
-  title: "Another fixture item",
-  product_url: "https://www.aliexpress.com/item/112234.html",
-  quantity: 1,
-});
-const concurrentRows = (await ali("analyze", undefined, undefined, concurrentData)).rows;
+// Старые исключения читаются только при явном восстановлении резервной копии.
+const oldBackup = structuredClone(backup);
+oldBackup.ignoredAliItems = [{ orderId: data.orders[0].order_id, itemKey: "old-key", title: "old title" }];
+const oldOrder = oldBackup.orders.find((order) => order.number === data.orders[0].order_id);
+oldOrder.aliexpress = { exportedAt: newer.exported_at, status: "Completed", total: "$12" };
+delete oldOrder.importState;
+assert.equal((await req("/api/components/import", oldBackup)).status, 200);
+const migrated = await (await req("/api/components/export")).json();
+assert.equal("ignoredAliItems" in migrated, false);
+assert.equal("aliexpress" in migrated.orders.find((order) => order.id === oldOrder.id), false);
+assert.equal(migrated.orders.find((order) => order.id === oldOrder.id).totalText, "$12");
+assert.deepEqual(migrated.legacyIgnoredOrders, [{ source: "AliExpress", id: data.orders[0].order_id }]);
+// Новый API не записывает предпочтения скрытия. Мост очищается идемпотентно через CAS.
+assert.equal((await req("/api/components/aliexpress", { action: "hide", data })).status, 400);
 const behaviorUrl = "http://127.0.0.1:19000/__fixture/write-behavior";
 await fetch(behaviorUrl, {
   method: "POST",
   body: JSON.stringify({ delayMs: 100 }),
 });
 try {
-  const responses = await Promise.all(concurrentRows.map((row) =>
+  const responses = await Promise.all([1, 2].map(() =>
     req("/api/components/aliexpress", {
-      action: "hide", data: concurrentData, rowIds: [row.id],
+      action: "ackImportPreferences", data, preferences: migrated.legacyIgnoredOrders,
     }),
   ));
   for (const response of responses) assert.equal(response.status, 200);
-  const afterConcurrent = await ali("analyze", undefined, undefined, concurrentData);
-  assert.ok(afterConcurrent.rows.every((row) => row.ignored));
+  const afterConcurrent = await ali("analyze");
+  assert.equal(afterConcurrent.legacyIgnoredOrders, undefined);
   const repeat = await req("/api/components/aliexpress", {
-    action: "hide", data: concurrentData, rowIds: [concurrentRows[0].id],
+    action: "ackImportPreferences", data, preferences: migrated.legacyIgnoredOrders,
   });
   assert.equal(repeat.status, 200);
-  assert.ok((await repeat.json()).rows.every((row) => row.ignored));
+  assert.equal((await repeat.json()).legacyIgnoredOrders, undefined);
 } finally {
   await fetch(behaviorUrl, { method: "POST", body: "{}" });
 }
@@ -245,14 +225,27 @@ await ali("apply", byNumberChoices, byNumberPreview.token, existingData);
 const savedByNumber = await (await req(`/api/components/${manualPart.id}`)).json();
 assert.equal(savedByNumber.data.purchases.length, 1);
 assert.equal(savedByNumber.data.purchases[0].id, existingPurchaseId);
-assert.equal("orderId" in savedByNumber.data.purchases[0].aliexpress, false);
+assert.equal("aliexpress" in savedByNumber.data.purchases[0], false);
 const numberBackup = await (await req("/api/components/export")).json();
 const ownOrder = numberBackup.orders.find((order) => order.id === existingOrderId);
 assert.equal(ownOrder.number, existingData.orders[0].order_id);
-assert.equal("orderId" in ownOrder.aliexpress, false);
+assert.equal("aliexpress" in ownOrder, false);
 assert.equal((await req("/api/components/import", numberBackup)).status, 200);
 assert.equal((await ali("preview", byNumberChoices, undefined, existingData)).unchanged, 1);
 
+// Воспроизводимый браузерный сценарий: связанная карточка с изменениями и новый товар.
+const uiFixture = await req("/api/components/import", {
+  components: [{ id: "ui-component", data: {
+    name: "Моя плата ESP32", tags: ["ESP", "Робот"], type: "Плата/МК", note: "Ящик 2",
+    purchases: [{ id: "ui-buy", orderId: "ui-order", quantity: 2, status: "in_transit",
+      productUrl: "https://www.aliexpress.com/item/6677.html", variant: "S3", unitsPerPack: 1,
+      importState: { exportedAt: "2026-10-20T12:00:00.000Z", matchKey: JSON.stringify(["https://www.aliexpress.com/item/6677.html", "s3"]), lastQuantity: 2, lastStatus: "in_transit", manualFields: [] },
+    }],
+  } }],
+  orders: [{ id: "ui-order", number: "ui-order", source: "AliExpress", trackingNumbers: ["UI-TRACK-1"], importState: { exportedAt: "2026-10-20T12:00:00.000Z" } }], shipments: [],
+});
+assert.equal(uiFixture.status, 200);
+
 console.log(
-  "AliExpress API: read-only analysis, apply, replay, delivery update, stale preview 409, backup, S3 conditional writes and concurrent idempotent hiding passed.",
+  "Import API: analysis, apply, replay, delivery update, stale preview 409, backup migration, S3 conditional writes and concurrent migration acknowledgment passed.",
 );

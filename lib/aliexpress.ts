@@ -121,6 +121,7 @@ export type AliRow = {
   status: Purchase["status"];
   trackingNumbers: string[];
   kind: "new" | "changed" | "unchanged" | "review";
+  changes: string[];
   warnings: string[];
   ignored: boolean;
   binding?: {
@@ -134,6 +135,7 @@ export type AliRow = {
 };
 export type AliAnalysis = {
   rows: AliRow[];
+  legacyIgnoredOrders?: { source: string; id: string }[];
   logistics: Logistics;
   components: {
     id: string;
@@ -146,7 +148,7 @@ export type AliAnalysis = {
       order: string;
       quantity?: number;
       status: Purchase["status"];
-      aliOrderId?: string;
+      externalOrderNumber?: string;
       productUrl?: string;
       unitsPerPack: number;
     }[];
@@ -245,33 +247,6 @@ function sourceRows(data: AliExport) {
   });
 }
 
-export function planAliVisibility(
-  catalog: Catalog,
-  data: AliExport,
-  rowIds: string[],
-  hidden: boolean,
-): Catalog {
-  if (!rowIds.length) throw new AliImportError("Выберите товар");
-  const rows = new Map(sourceRows(data).map((row) => [row.id, row]));
-  const ignored = new Map(
-    (catalog.ignoredAliItems ?? []).map((item) => [item.id, item]),
-  );
-  for (const rowId of rowIds) {
-    const row = rows.get(rowId);
-    if (!row) throw new AliImportError("Товар не найден в выгрузке");
-    const id = stableId("hidden", [row.order.order_id, row.key]);
-    if (hidden && !ignored.has(id))
-      ignored.set(id, {
-        id,
-        orderId: row.order.order_id,
-        itemKey: row.key,
-        title: row.item.title ?? "Без названия",
-        createdAt: new Date().toISOString(),
-      });
-    else if (!hidden) ignored.delete(id);
-  }
-  return parseCatalog({ ...catalog, ignoredAliItems: [...ignored.values()] });
-}
 type SourceRow = ReturnType<typeof sourceRows>[number];
 
 function findBinding(catalog: Catalog, row: SourceRow) {
@@ -284,11 +259,11 @@ function findBinding(catalog: Catalog, row: SourceRow) {
       .map((purchase) => ({ component, purchase })),
   );
   const matches = purchases.filter(({ purchase }) =>
-    purchase.aliexpress?.itemKey === row.key && !purchase.aliexpress.ambiguous,
+    purchase.importState?.matchKey === row.key && !purchase.importState.needsManualMatch,
   );
   if (
     !matches.length && row.order.items.length === 1 && purchases.length === 1 &&
-    !purchases[0].purchase.aliexpress
+    !purchases[0].purchase.importState
   ) return purchases[0];
   return matches.length === 1 ? matches[0] : undefined;
 }
@@ -299,7 +274,7 @@ function updatePurchase(
   exportedAt: string,
   selection: AliSelection,
 ) {
-  const previous = purchase.aliexpress;
+  const previous = purchase.importState;
   const warnings: string[] = [];
   const fresh =
     !previous || Date.parse(exportedAt) >= Date.parse(previous.exportedAt);
@@ -312,13 +287,13 @@ function updatePurchase(
   if (sourceQuantity !== undefined && !Number.isSafeInteger(sourceQuantity))
     throw new AliImportError("Слишком большое количество");
   const quantityOverride =
-    previous?.quantityOverride ||
+    previous?.manualFields.includes("quantity") ||
     selection.quantity !== undefined ||
     (previous
       ? purchase.quantity !== previous.lastQuantity
       : purchase.quantity !== sourceQuantity);
   const statusOverride =
-    previous?.statusOverride ||
+    previous?.manualFields.includes("status") ||
     selection.status !== undefined ||
     (previous
       ? purchase.status !== previous.lastStatus
@@ -364,19 +339,21 @@ function updatePurchase(
       ...purchase,
       quantity: nextQuantity,
       status: nextStatus,
-      aliexpress: {
-        itemKey: row.key,
-        ambiguous: row.ambiguous || undefined,
-        productUrl: aliProductUrl(row.item.product_url) ?? previous?.productUrl,
-        sku: clean(row.item.sku) ?? previous?.sku,
-        unitsPerPack: selection.unitsPerPack,
+      productUrl: aliProductUrl(row.item.product_url) ?? purchase.productUrl,
+      variant: clean(row.item.sku) ?? purchase.variant,
+      unitsPerPack: selection.unitsPerPack,
+      importState: {
+        matchKey: row.key,
+        needsManualMatch: row.ambiguous || undefined,
         exportedAt: fresh ? exportedAt : previous!.exportedAt,
         lastQuantity: fresh
           ? (sourceQuantity ?? previous?.lastQuantity)
           : previous!.lastQuantity,
         lastStatus: fresh ? incoming : previous!.lastStatus,
-        quantityOverride: quantityOverride || undefined,
-        statusOverride: statusOverride || undefined,
+        manualFields: [
+          ...(quantityOverride ? ["quantity" as const] : []),
+          ...(statusOverride ? ["status" as const] : []),
+        ],
       },
     } satisfies Purchase,
     warnings,
@@ -387,7 +364,7 @@ function findAliOrder(catalog: Catalog, number: string) {
   return catalog.orders.find(
     (o) =>
       norm(o.source) === "aliexpress" && norm(o.number) === norm(number),
-  ) ?? catalog.orders.find((o) => o.aliexpress?.orderId === number);
+  );
 }
 
 function orderFor(catalog: Catalog, order: AliOrder, purchase?: Purchase) {
@@ -416,8 +393,7 @@ function applyOrder(
     catalog.orders.find((o) => o.id === purchase.orderId);
   if (
     linkedOrder && norm(linkedOrder.source) === "aliexpress" &&
-    norm(linkedOrder.number) !== norm(source.order_id) &&
-    linkedOrder.aliexpress?.orderId !== source.order_id
+    norm(linkedOrder.number) !== norm(source.order_id)
   )
     throw new AliImportError(
       "Эта покупка уже связана с другим заказом AliExpress",
@@ -439,9 +415,8 @@ function applyOrder(
   order.number = source.order_id;
   order.source = "AliExpress";
   const fresh =
-    !order.aliexpress ||
-    Date.parse(exportedAt) >= Date.parse(order.aliexpress.exportedAt);
-  if (order.aliexpress) delete order.aliexpress.orderId;
+    !order.importState ||
+    Date.parse(exportedAt) >= Date.parse(order.importState.exportedAt);
   if (fresh) {
     order.store ||= clean(source.store)?.slice(0, 200);
     order.url ||= clean(source.order_url);
@@ -456,17 +431,16 @@ function applyOrder(
         tracks.set(track.toLowerCase(), track);
       order.trackingNumbers = [...tracks.values()];
     }
-    order.aliexpress = {
-      exportedAt,
-      date: clean(source.date) ?? order.aliexpress?.date,
-      status: clean(source.status) ?? order.aliexpress?.status,
-      total: clean(source.total_text) ?? order.aliexpress?.total,
-      shipments:
+    order.importState = { exportedAt };
+    order.date = clean(source.date) ?? order.date;
+    order.sourceStatus = clean(source.status) ?? order.sourceStatus;
+    order.totalText = clean(source.total_text) ?? order.totalText;
+    order.trackingDetails =
         source.tracking_lookup === "cached" || source.shipments.length === 0
-          ? order.aliexpress?.shipments
+          ? order.trackingDetails
           : (() => {
               const saved = new Map(
-                (order.aliexpress?.shipments ?? []).map((shipment) => [
+                (order.trackingDetails ?? []).map((shipment) => [
                   shipment.trackingNumber.toLowerCase(),
                   shipment,
                 ]),
@@ -485,14 +459,11 @@ function applyOrder(
                 });
               }
               return [...saved.values()];
-            })(),
-    };
+            })();
   }
   const semanticOrder = (value: typeof order) => ({
     ...value,
-    aliexpress: value.aliexpress
-      ? { ...value.aliexpress, exportedAt: undefined }
-      : undefined,
+    importState: undefined,
   });
   return {
     order,
@@ -500,6 +471,38 @@ function applyOrder(
       JSON.stringify(semanticOrder(JSON.parse(before))) !==
       JSON.stringify(semanticOrder(order)),
   };
+}
+
+function describeChanges(
+  before: Purchase | undefined, after: Purchase,
+  previousOrder: Catalog["orders"][number] | undefined,
+  order: Catalog["orders"][number],
+) {
+  const changes: string[] = [];
+  if (!before || before.quantity !== after.quantity)
+    changes.push(`Количество: ${before ? before.quantity ?? "неизвестно" : "—"} → ${after.quantity ?? "неизвестно"}`);
+  if (!before || before.status !== after.status)
+    changes.push(`Статус: ${before ? PURCHASE_LABELS[before.status] : "—"} → ${PURCHASE_LABELS[after.status]}`);
+  if (JSON.stringify(previousOrder?.trackingNumbers ?? []) !== JSON.stringify(order.trackingNumbers))
+    changes.push(`Треки: ${previousOrder?.trackingNumbers.join(", ") || "—"} → ${order.trackingNumbers.join(", ") || "—"}`);
+  for (const [key, label] of [
+    ["number", "Номер заказа"], ["source", "Источник"], ["date", "Дата заказа"],
+    ["store", "Магазин"], ["url", "Ссылка на заказ"],
+    ["sourceStatus", "Статус источника"], ["totalText", "Сумма заказа"],
+  ] as const) {
+    if (previousOrder?.[key] !== order[key])
+      changes.push(`${label}: ${previousOrder?.[key] || "—"} → ${order[key] || "—"}`);
+  }
+  if (JSON.stringify(previousOrder?.trackingDetails) !== JSON.stringify(order.trackingDetails)) {
+    for (const shipment of order.trackingDetails ?? []) {
+      const previous = previousOrder?.trackingDetails?.find((s) => s.trackingNumber.toLowerCase() === shipment.trackingNumber.toLowerCase());
+      if (JSON.stringify(previous) !== JSON.stringify(shipment)) {
+        const text = (value: typeof previous) => value && [value.carrier, value.status, value.lastEvent, value.lastEventTime].filter(Boolean).join(" · ") || "—";
+        changes.push(`Доставка ${shipment.trackingNumber}: ${text(previous)} → ${text(shipment)}`);
+      }
+    }
+  }
+  return changes;
 }
 
 export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
@@ -523,10 +526,11 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
           ? "review"
           : "new";
       let projected: Purchase | undefined;
+      let changes: string[] = [];
       if (binding) {
         const selection = {
           rowId: row.id,
-          unitsPerPack: binding.purchase.aliexpress?.unitsPerPack ?? 1,
+          unitsPerPack: binding.purchase.unitsPerPack ?? 1,
         };
         const next = updatePurchase(
           binding.purchase,
@@ -546,21 +550,8 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
         const previousOrder = catalog.orders.find(
           (o) => o.id === binding.purchase.orderId,
         )!;
-        const oldOrder = {
-          ...previousOrder,
-          aliexpress: { ...previousOrder.aliexpress, exportedAt: undefined },
-        };
-        const newOrder = {
-          ...updatedOrder,
-          aliexpress: { ...updatedOrder.aliexpress, exportedAt: undefined },
-        };
-        kind =
-          next.purchase.quantity !== binding.purchase.quantity ||
-          next.purchase.status !== binding.purchase.status ||
-          JSON.stringify(oldOrder) !== JSON.stringify(newOrder) ||
-          previousOrder.aliexpress?.status !== updatedOrder.aliexpress?.status
-            ? "changed"
-            : "unchanged";
+        changes = describeChanges(binding.purchase, next.purchase, previousOrder, updatedOrder);
+        kind = changes.length ? "changed" : "unchanged";
       }
       return {
         id: row.id,
@@ -578,19 +569,17 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
         status: sourceStatus(row.order),
         trackingNumbers: row.order.tracking_numbers,
         kind,
+        changes,
         warnings: [...new Set(warnings)],
-        ignored: (catalog.ignoredAliItems ?? []).some(
-          (item) =>
-            item.orderId === row.order.order_id && item.itemKey === row.key,
-        ),
+        ignored: false,
         binding: binding
           ? {
               componentId: binding.component.id,
               purchaseId: binding.purchase.id,
-              unitsPerPack: binding.purchase.aliexpress?.unitsPerPack ?? 1,
+              unitsPerPack: binding.purchase.unitsPerPack ?? 1,
               quantity: projected!.quantity,
               status: projected!.status,
-              quantityOverride: projected!.aliexpress?.quantityOverride,
+              quantityOverride: projected!.importState?.manualFields.includes("quantity"),
             }
           : undefined,
       };
@@ -602,6 +591,7 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
     );
   return {
     rows,
+    legacyIgnoredOrders: catalog.legacyIgnoredOrders,
     logistics: {
       orders: catalog.orders,
       shipments: catalog.shipments,
@@ -620,13 +610,13 @@ export function analyzeAli(catalog: Catalog, data: AliExport): AliAnalysis {
             catalog.orders.find((o) => o.id === p.orderId)?.number ?? p.orderId,
           quantity: p.quantity,
           status: p.status,
-          aliOrderId: (() => {
+          externalOrderNumber: (() => {
             const order = catalog.orders.find((o) => o.id === p.orderId);
             return order && norm(order.source) === "aliexpress"
-              ? order.number : order?.aliexpress?.orderId;
+              ? order.number : undefined;
           })(),
-          productUrl: p.aliexpress?.productUrl,
-          unitsPerPack: p.aliexpress?.unitsPerPack ?? 1,
+          productUrl: p.productUrl,
+          unitsPerPack: p.unitsPerPack ?? 1,
         })),
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "ru")),
@@ -653,13 +643,6 @@ export function planAliImport(
   for (const selection of selections) {
     const row = rows.get(selection.rowId);
     if (!row) throw new AliImportError("Товар не найден в выгрузке");
-    if (
-      (catalog.ignoredAliItems ?? []).some(
-        (item) =>
-          item.orderId === row.order.order_id && item.itemKey === row.key,
-      )
-    )
-      throw new AliImportError("Товар скрыт. Сначала верните его в импорт.");
     const automatic = findBinding(next, row);
     const componentId = selection.componentId ?? automatic?.component.id;
     let component = componentId
@@ -680,10 +663,10 @@ export function planAliImport(
     )
       throw new AliImportError("Позиция уже привязана к другой покупке");
     if (
-      purchase?.aliexpress &&
-      (purchase.aliexpress.itemKey !== row.key &&
+      purchase?.importState &&
+      (purchase.importState.matchKey !== row.key &&
           (!selection.purchaseId ||
-            purchase.aliexpress.productUrl !==
+            purchase.productUrl !==
               aliProductUrl(row.item.product_url)))
     )
       throw new AliImportError(
@@ -819,55 +802,12 @@ export function planAliImport(
       );
     if (row.order.tracking_lookup === "cached")
       warnings.add("Трекинг из кэша не обновляет сохранённые треки.");
-    const details: string[] = [];
-    if (isNewPurchase || previous.quantity !== result.purchase.quantity)
-      details.push(
-        `Количество: ${isNewPurchase ? "—" : (previous.quantity ?? "неизвестно")} → ${result.purchase.quantity ?? "неизвестно"}`,
-      );
-    if (isNewPurchase || previous.status !== result.purchase.status)
-      details.push(
-        `Статус: ${isNewPurchase ? "—" : PURCHASE_LABELS[previous.status]} → ${PURCHASE_LABELS[result.purchase.status]}`,
-      );
     const oldOrder = catalog.orders.find((o) => o.id === orderResult.order.id);
-    if (
-      JSON.stringify(oldOrder?.trackingNumbers ?? []) !==
-      JSON.stringify(orderResult.order.trackingNumbers)
-    )
-      details.push(
-        `Треки: ${oldOrder?.trackingNumbers.join(", ") || "—"} → ${orderResult.order.trackingNumbers.join(", ") || "—"}`,
-      );
-    if (!isNewPurchase && !previous.aliexpress)
+    const details = describeChanges(isNewPurchase ? undefined : previous, result.purchase, oldOrder, orderResult.order);
+    if (!isNewPurchase && !previous.importState)
       details.push(
         `Связать существующую покупку с заказом ${row.order.order_id}`,
       );
-    if (orderResult.changed) {
-      if (oldOrder?.aliexpress?.date !== orderResult.order.aliexpress?.date)
-        details.push(
-          `Дата заказа: ${orderResult.order.aliexpress?.date ?? "—"}`,
-        );
-      if (oldOrder?.store !== orderResult.order.store)
-        details.push(`Магазин: ${orderResult.order.store ?? "—"}`);
-      if (oldOrder?.url !== orderResult.order.url)
-        details.push(`Ссылка на заказ: ${orderResult.order.url ?? "—"}`);
-      if (oldOrder?.aliexpress?.status !== orderResult.order.aliexpress?.status)
-        details.push(
-          `Статус AliExpress: ${orderResult.order.aliexpress?.status ?? "—"}`,
-        );
-      if (oldOrder?.aliexpress?.total !== orderResult.order.aliexpress?.total)
-        details.push(
-          `Сумма заказа: ${orderResult.order.aliexpress?.total ?? "—"}`,
-        );
-      if (
-        JSON.stringify(oldOrder?.aliexpress?.shipments) !==
-        JSON.stringify(orderResult.order.aliexpress?.shipments)
-      )
-        details.push(
-          ...(orderResult.order.aliexpress?.shipments ?? []).map(
-            (s) =>
-              `Доставка ${s.trackingNumber}: ${[s.carrier, s.status, s.lastEvent, s.lastEventTime].filter(Boolean).join(" · ")}`,
-          ),
-        );
-    }
     const changed = isNewPurchase || details.length > 0 || orderResult.changed;
     component.data.purchases = isNewPurchase
       ? [...(component.data.purchases ?? []), result.purchase]

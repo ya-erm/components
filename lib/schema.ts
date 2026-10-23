@@ -93,27 +93,17 @@ export const orderSchema = z.object({
   source: z.string().trim().min(1).max(100).default("Вручную"),
   store: optionalText(200),
   url: optionalUrl,
-  aliexpress: z
-    .object({
-      // Только для чтения прежних каталогов; новый импорт использует order.number.
-      orderId: identifier.optional(),
-      exportedAt: z.string().datetime(),
-      date: z.string().optional(),
-      status: z.string().optional(),
-      total: z.string().optional(),
-      shipments: z
-        .array(
-          z.object({
-            trackingNumber: z.string(),
-            carrier: z.string().optional(),
-            status: z.string().optional(),
-            lastEvent: z.string().optional(),
-            lastEventTime: z.string().optional(),
-          }),
-        )
-        .optional(),
-    })
-    .optional(),
+  date: optionalText(4000),
+  sourceStatus: optionalText(4000),
+  totalText: optionalText(4000),
+  trackingDetails: z.array(z.object({
+    trackingNumber: identifier,
+    carrier: optionalText(4000),
+    status: optionalText(4000),
+    lastEvent: optionalText(4000),
+    lastEventTime: optionalText(4000),
+  })).max(100).optional(),
+  importState: z.object({ exportedAt: z.string().datetime() }).optional(),
   comments: z.array(commentSchema).max(500).default([]),
   trackingNumbers: z
     .array(z.string().trim().min(1, "Укажите трек-номер").max(200))
@@ -159,18 +149,17 @@ export const purchaseSchema = z.object({
   orderId: identifier,
   quantity: count.optional(),
   status: z.enum([...PURCHASE_STATUSES, "unassigned"]),
-  aliexpress: z
+  productUrl: optionalUrl,
+  variant: optionalText(1000),
+  unitsPerPack: count.positive().optional(),
+  importState: z
     .object({
-      itemKey: z.string().min(1).max(2000),
-      ambiguous: z.boolean().optional(),
-      productUrl: optionalUrl,
-      sku: optionalText(1000),
-      unitsPerPack: count.positive(),
       exportedAt: z.string().datetime(),
+      matchKey: z.string().min(1).max(8000).optional(),
+      needsManualMatch: z.boolean().optional(),
       lastQuantity: count.optional(),
       lastStatus: z.enum([...PURCHASE_STATUSES, "unassigned"]),
-      quantityOverride: z.boolean().optional(),
-      statusOverride: z.boolean().optional(),
+      manualFields: z.array(z.enum(["quantity", "status"])).max(2).default([]),
     })
     .optional(),
 });
@@ -189,18 +178,8 @@ export const shipmentSchema = z.object({
   url: optionalUrl,
 });
 export const logisticsSchema = z.object({
-  ignoredAliItems: z
-    .array(
-      z.object({
-        id: identifier,
-        orderId: identifier,
-        itemKey: z.string().min(1).max(8000),
-        title: z.string().max(4000),
-        createdAt: z.string().datetime(),
-      }),
-    )
-    .max(10000)
-    .optional(),
+  // Удаляется после подтверждённого переноса старых исключений в браузер.
+  legacyIgnoredOrders: z.array(z.object({ source: identifier, id: identifier })).max(10000).optional(),
   orders: z.array(orderSchema).max(5000).default([]),
   shipments: z.array(shipmentSchema).max(5000).default([]),
   projects: z.array(projectSchema).max(5000).optional(),

@@ -26,6 +26,8 @@ export function useImportDraft<T>(
       }
     } catch {
       setStorageError(true);
+      // Не перезаписываем исходный черновик, если восстановление/миграция не удались.
+      return;
     }
     setReady(true);
   }, [storageKey]);

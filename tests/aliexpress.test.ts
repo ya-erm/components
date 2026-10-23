@@ -4,11 +4,12 @@ import {
   aliExportSchema,
   analyzeAli,
   planAliImport,
-  planAliVisibility,
   type AliSelection,
 } from "../lib/aliexpress";
 import { parseCatalog } from "../lib/catalog";
 import { inventoryTotals, componentDataSchema } from "../lib/schema";
+import { migrateCatalogImport } from "../lib/import-migration";
+import { readImportPreferences, setOrderIgnored, isOrderIgnored, migrateImportPreferences } from "../lib/import-preferences";
 
 function source() {
   return aliExportSchema.parse({
@@ -67,8 +68,8 @@ test("order matching uses the domain order number and does not store duplicate e
   const saved = planAliImport(empty(), data, [firstSelection(data)]).catalog;
   assert.equal(saved.orders[0].number, "fresh");
   assert.equal(saved.orders[0].source, "AliExpress");
-  assert.equal("orderId" in saved.orders[0].aliexpress!, false);
-  assert.equal("orderId" in saved.items[0].data.purchases![0].aliexpress!, false);
+  assert.equal("aliexpress" in saved.orders[0], false);
+  assert.equal("aliexpress" in saved.items[0].data.purchases![0], false);
   // Служебные id не обязаны кодировать внешний номер.
   saved.orders[0].number = "another-number";
   data.orders[0].order_id = "another-number";
@@ -112,16 +113,21 @@ test("legacy bindings are readable and move their number to the domain order on 
   const legacy = JSON.parse(JSON.stringify(saved));
   legacy.orders[0].number = "Старое название";
   legacy.orders[0].source = "Вручную";
-  legacy.orders[0].aliexpress.orderId = "fresh";
-  legacy.items[0].data.purchases[0].aliexpress.orderId = "fresh";
-  const restored = parseCatalog(legacy);
+  const purchase = legacy.items[0].data.purchases[0];
+  legacy.orders[0].aliexpress = { orderId: "fresh", exportedAt: data.exported_at, date: "Oct 12, 2026", status: "Awaiting delivery", total: "$10" };
+  delete legacy.orders[0].importState;
+  purchase.aliexpress = { orderId: "fresh", itemKey: purchase.importState.matchKey, exportedAt: data.exported_at, unitsPerPack: 10, lastQuantity: 20, lastStatus: "in_transit", productUrl: purchase.productUrl, sku: "S3" };
+  delete purchase.importState;
+  const restored = parseCatalog(migrateCatalogImport(legacy));
   assert.ok(analyzeAli(restored, data).rows[0].binding);
   const result = planAliImport(restored, data, [firstSelection(data, restored)]).catalog;
   assert.equal(result.orders[0].number, "fresh");
   assert.equal(result.orders[0].source, "AliExpress");
   assert.ok(result.orders[0].comments.some((comment) => comment.text.includes("Старое название")));
-  assert.equal("orderId" in result.orders[0].aliexpress!, false);
-  assert.equal("orderId" in result.items[0].data.purchases![0].aliexpress!, false);
+  assert.equal("aliexpress" in result.orders[0], false);
+  assert.equal("aliexpress" in result.items[0].data.purchases![0], false);
+  assert.equal(result.items[0].data.purchases![0].variant, "S3");
+  assert.deepEqual(parseCatalog(migrateCatalogImport(result)), result);
   assert.equal(planAliImport(result, data, [firstSelection(data, result)]).preview.unchanged, 1);
 });
 
@@ -242,48 +248,26 @@ test("full component draft preserves metadata, images, comments, purchases and p
   );
 });
 
-test("ignored goods stay hidden across uploads, source reorder and catalog export, and can be restored", () => {
-  const data = source(),
-    initial = empty();
-  const row = analyzeAli(initial, data).rows[0];
-  const hidden = planAliVisibility(initial, data, [row.id], true);
-  assert.deepEqual(planAliVisibility(hidden, data, [row.id], true), hidden);
-  assert.equal(initial.ignoredAliItems, undefined);
-  assert.equal(hidden.items.length, 0);
-  const restoredCatalog = parseCatalog(JSON.parse(JSON.stringify(hidden)));
-  data.orders[0].items.reverse();
-  const analysis = analyzeAli(restoredCatalog, data);
-  assert.equal(analysis.rows.find((r) => r.title === "ESP32")!.ignored, true);
-  assert.equal(analysis.rows.find((r) => r.title === "LED")!.ignored, false);
-  assert.throws(
-    () =>
-      planAliImport(restoredCatalog, data, [
-        { rowId: row.id, unitsPerPack: 1 },
-      ]),
-    /Товар скрыт/,
-  );
-  const visible = planAliVisibility(restoredCatalog, data, [row.id], false);
-  assert.equal(
-    analyzeAli(visible, data).rows.find((r) => r.id === row.id)!.ignored,
-    false,
-  );
-  assert.equal(
-    planAliImport(visible, data, [{ rowId: row.id, unitsPerPack: 1 }]).catalog
-      .items.length,
-    1,
-  );
+test("browser exclusions use only source and order IDs and survive repeats without re-hiding restored orders", () => {
+  const initial = readImportPreferences(null);
+  const refs = [{ source: "AliExpress", id: "fresh" }, { source: "Other shop", id: "fresh" }];
+  const migrated = migrateImportPreferences(initial, refs);
+  const restored = setOrderIgnored(migrated, "AliExpress", "fresh", false);
+  const again = migrateImportPreferences(readImportPreferences(JSON.stringify(restored)), refs);
+  assert.equal(isOrderIgnored(again, "AliExpress", "fresh"), false);
+  assert.equal(isOrderIgnored(again, "Other shop", "fresh"), true);
+  assert.equal(isOrderIgnored(initial, "AliExpress", "fresh"), false);
+  assert.deepEqual(again.ignoredOrders, { aliexpress: [], "other shop": ["fresh"] });
+  assert.throws(() => readImportPreferences('{"version":1,"ignoredOrders":{"a":[null]},"migratedSources":[]}'));
 });
 
-test("hiding indistinguishable duplicate goods uses product identity, never source index", () => {
-  const data = source();
-  data.orders[0].items.push({ ...data.orders[0].items[0] });
-  const rows = analyzeAli(empty(), data).rows;
-  const hidden = planAliVisibility(empty(), data, [rows[0].id], true);
-  data.orders[0].items.reverse();
-  assert.equal(
-    analyzeAli(hidden, data).rows.filter((row) => row.ignored).length,
-    2,
-  );
+test("old exclusion details collapse to a temporary migration bridge with order IDs only", () => {
+  const catalog = parseCatalog(migrateCatalogImport({ version: 2, items: [], ignoredAliItems: [
+    { orderId: "fresh", itemKey: "a", title: "private title" },
+    { orderId: "fresh", itemKey: "b" },
+  ] }));
+  assert.deepEqual(catalog.legacyIgnoredOrders, [{ source: "AliExpress", id: "fresh" }]);
+  assert.equal("ignoredAliItems" in catalog, false);
 });
 
 test("preview cards show final quantities when several selected goods share a component", () => {
@@ -357,6 +341,8 @@ test("newer export updates delivery and stock, reorder and query parameters pres
   const row = analyzeAli(first, newer).rows.find((r) => r.title === "ESP32")!;
   assert.equal(row.kind, "changed");
   assert.equal(row.binding!.componentId, first.items[0].id);
+  assert.ok(row.changes.includes("Статус: В пути → Доставлено"));
+  assert.ok(row.changes.includes("Треки: TRACK-1 → TRACK-1, TRACK-2"));
   const result = planAliImport(first, newer, [
     { rowId: row.id, unitsPerPack: row.binding!.unitsPerPack },
   ]);
@@ -399,6 +385,35 @@ test("manual data, package conversion and project usage survive automatic update
   assert.deepEqual(result.catalog.items[0].data.tags, ["MCU"]);
   assert.equal(result.catalog.orders[0].comments[0].text, "Проверить");
   assert.ok(result.preview.warnings.some((w) => w.includes("вручную")));
+  assert.ok(analyzeAli(catalog, newer).rows[0].changes.every((text) => !text.startsWith("Количество:") && !text.startsWith("Статус:")));
+});
+
+test("migration merges legacy order aliases without losing purchases, comments or tracking", () => {
+  const raw = {
+    version: 2,
+    orders: [
+      { id: "canonical", number: "fresh", source: "AliExpress", comments: [{ id: "c", text: "Keep", createdAt: source().exported_at }], trackingNumbers: ["A"] },
+      { id: "alias", number: "My order", source: "Manual", comments: [{ id: "c", text: "Also keep", createdAt: source().exported_at }], trackingNumbers: ["B"], aliexpress: {
+        orderId: "fresh", exportedAt: source().exported_at, total: "$20", shipments: [{ trackingNumber: "B", carrier: "Post" }],
+      } },
+      { id: "other", number: "fresh", source: "Other shop" },
+    ],
+    items: [{ id: "part", createdAt: source().exported_at, updatedAt: source().exported_at,
+      data: { name: "Board", purchases: [{ id: "buy", orderId: "alias", quantity: 7, status: "cancelled", aliexpress: {
+        itemKey: "key", exportedAt: source().exported_at, unitsPerPack: 10, lastQuantity: 20, lastStatus: "in_transit", quantityOverride: true, statusOverride: true,
+      } }] } }],
+  };
+  const original = structuredClone(raw);
+  const migrated = parseCatalog(migrateCatalogImport(raw));
+  assert.deepEqual(raw, original);
+  assert.equal(migrated.orders.length, 2);
+  assert.equal(migrated.items[0].data.purchases![0].orderId, "canonical");
+  assert.deepEqual(migrated.items[0].data.purchases![0].importState?.manualFields, ["quantity", "status"]);
+  assert.equal(migrated.orders[0].comments.length, 3);
+  assert.deepEqual(migrated.orders[0].trackingNumbers, ["A", "B"]);
+  assert.equal(migrated.orders[0].trackingDetails?.[0].carrier, "Post");
+  assert.deepEqual(parseCatalog(migrateCatalogImport(migrated)), migrated);
+  assert.equal(JSON.stringify(migrated).includes('"aliexpress":'), false);
 });
 
 test("old exports, missing values, cached tracking, unknown and regressive statuses do not damage saved data", () => {
@@ -599,7 +614,7 @@ test("manual quantity remains protected even if an intermediate export matches t
     firstSelection(same, initial),
   ]).catalog;
   assert.equal(
-    saved.items[0].data.purchases![0].aliexpress!.quantityOverride,
+    saved.items[0].data.purchases![0].importState!.manualFields.includes("quantity"),
     true,
   );
   same.exported_at = "2026-10-21T12:00:00.000Z";

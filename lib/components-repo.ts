@@ -10,7 +10,6 @@ import {
   aliExportSchema,
   type AliSelection,
   planAliImport,
-  planAliVisibility,
 } from "./aliexpress";
 import type { z } from "zod";
 import {
@@ -70,7 +69,7 @@ export async function applyAliImport(
     throw new AliConflictError(
       "Каталог изменился после предпросмотра. Проверьте обновлённое сравнение.",
     );
-  if (JSON.stringify(current) !== JSON.stringify(plan.catalog)) {
+  if (JSON.stringify(stored.value) !== JSON.stringify(plan.catalog)) {
     try {
       await putJsonConditional(key, plan.catalog, stored.etag);
     } catch (error) {
@@ -86,24 +85,27 @@ export async function applyAliImport(
   return plan.preview;
 }
 
-export async function setAliVisibility(
+/** Удаляем старые исключения только после подтверждения записи в браузере. */
+export async function acknowledgeImportPreferences(
   ownerId: string,
-  data: z.infer<typeof aliExportSchema>,
-  rowIds: string[],
-  hidden: boolean,
+  entries: { source: string; id: string }[],
 ) {
   const key = catalogKey(ownerId);
-  // Повтор после возврата на страницу может совпасть с ещё выполняющейся записью.
+  const acknowledged = new Set(entries.map((entry) =>
+    JSON.stringify([entry.source.toLowerCase(), entry.id]),
+  ));
   for (let attempt = 0; attempt < 3; attempt++) {
     const stored = await getJsonVersioned<unknown>(key);
     if (stored.value !== null && !stored.etag)
       throw new AliConflictError("Не удалось получить версию каталога");
     const current = parseCatalog(stored.value);
-    const catalog = planAliVisibility(current, data, rowIds, hidden);
-    if (
-      JSON.stringify(current.ignoredAliItems ?? []) ===
-      JSON.stringify(catalog.ignoredAliItems ?? [])
-    ) return current;
+    const catalog = { ...current };
+    const remaining = current.legacyIgnoredOrders?.filter((entry) =>
+      !acknowledged.has(JSON.stringify([entry.source.toLowerCase(), entry.id])),
+    );
+    if (remaining?.length) catalog.legacyIgnoredOrders = remaining;
+    else delete catalog.legacyIgnoredOrders;
+    if (JSON.stringify(stored.value) === JSON.stringify(catalog)) return current;
     try {
       await putJsonConditional(key, catalog, stored.etag);
       return catalog;

@@ -25,6 +25,11 @@ import {
 } from "@/lib/aliexpress-filter";
 import type { ComponentFormDraft } from "@/components/ComponentForm";
 import { useImportDraft } from "@/components/useImportDraft";
+import { migrateOrderImport, migratePurchaseImport } from "@/lib/import-migration";
+import {
+  importPreferencesKey, isOrderIgnored, migrateImportPreferences,
+  readImportPreferences, setOrderIgnored, type ImportPreferences, type ImportOrderRef,
+} from "@/lib/import-preferences";
 import {
   backImportStep,
   finishImportStep,
@@ -53,11 +58,6 @@ type Draft = {
   statusEdited: boolean;
   componentDraft?: AliSelection["componentDraft"];
 };
-type VisibilityJob = {
-  rowIds: string[];
-  ignored: boolean;
-  previousSelected: Record<string, Draft>;
-};
 function initialDraft(row: AliRow): Draft {
   return {
     componentId: row.binding?.componentId ?? "",
@@ -78,12 +78,12 @@ async function request<T>(
   source: unknown,
   selections?: AliSelection[],
   token?: string,
-  rowIds?: string[],
+  preferences?: ImportOrderRef[],
 ): Promise<T> {
   const response = await fetch("/api/components/aliexpress", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, data: source, selections, token, rowIds }),
+    body: JSON.stringify({ action, data: source, selections, token, preferences }),
   });
   const body = await response.json().catch(() => null);
   if (!response.ok)
@@ -109,8 +109,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [pendingVisibility, setPendingVisibility] = useState<VisibilityJob[]>([]);
-  const visibilityInFlight = useRef(false);
+  const [preferences, setPreferences] = useState<ImportPreferences>(() => readImportPreferences(null));
   const [workspace, setWorkspace] = useState<{
     rowId: string;
     mode: "choose" | "new";
@@ -120,11 +119,12 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   >({});
   const draftSnapshot = useMemo(
     () => analysis && !done ? {
+      formatVersion: 2,
       fileName, data, analysis, selected, query, kinds, since, preview,
-      showPreview, done, workspace, formDrafts, pendingVisibility,
+      showPreview, done, workspace, formDrafts,
     } : null,
     [fileName, data, analysis, selected, query, kinds, since, preview,
-      showPreview, done, workspace, formDrafts, pendingVisibility],
+      showPreview, done, workspace, formDrafts],
   );
   const { ready, storageError, savedAt } = useImportDraft(
     `aliexpress-import:v1:${ownerId}`,
@@ -132,21 +132,52 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
     (saved) => {
       if (!saved || !Array.isArray(saved.analysis?.rows) || !saved.selected)
         return;
+      const old = saved as typeof saved & { pendingVisibility?: { rowIds: string[]; ignored: boolean }[] };
+      try {
+        let local = readImportPreferences(localStorage.getItem(importPreferencesKey(ownerId)));
+        if (saved.formatVersion !== 2 && !local.migratedSources.includes("aliexpress")) {
+          for (const row of saved.analysis.rows.filter((row) => row.ignored))
+            local = setOrderIgnored(local, "AliExpress", row.orderId, true);
+          for (const job of old.pendingVisibility ?? []) {
+            for (const row of saved.analysis.rows.filter((row) => job.rowIds.includes(row.id)))
+              local = setOrderIgnored(local, "AliExpress", row.orderId, job.ignored);
+          }
+        }
+        localStorage.setItem(importPreferencesKey(ownerId), JSON.stringify(local));
+        setPreferences(local);
+      } catch {
+        setError("Не удалось перенести скрытые заказы в браузер. Старый черновик сохранён до следующего открытия.");
+        throw new Error("Не удалось перенести настройки импорта");
+      }
       setFileName(saved.fileName);
       setData(saved.data);
-      setAnalysis(saved.analysis);
-      setSelected(saved.selected);
+      const migrateDraft = <T,>(value: T): T => {
+        // Черновики формы могут быть невалидными: преобразуем только известные поля.
+        if (!value || typeof value !== "object") return value;
+        if (Array.isArray(value)) return value.map(migrateDraft) as T;
+        return Object.fromEntries(Object.entries(value).map(([key, field]) => [
+          key, key === "orders" && Array.isArray(field)
+            ? field.map(migrateOrderImport)
+            : key === "purchases" && Array.isArray(field)
+              ? field.map(migratePurchaseImport) : migrateDraft(field),
+        ])) as T;
+      };
+      setAnalysis(migrateDraft(saved.analysis));
+      setSelected(migrateDraft(saved.selected));
       setQuery(saved.query);
       setKinds(parseAliKinds(saved.kinds ?? (saved as { kind?: unknown }).kind));
       setSince(saved.since);
-      setPreview(saved.preview);
-      setShowPreview(saved.showPreview);
+      // Старый токен предпросмотра относится к прежней структуре каталога.
+      setPreview(saved.formatVersion === 2 ? saved.preview : null);
+      setShowPreview(saved.formatVersion === 2 && saved.showPreview);
       setDone(saved.done);
       setWorkspace(saved.workspace);
-      setFormDrafts(saved.formDrafts ?? {});
-      setPendingVisibility(saved.pendingVisibility ?? []);
+      setFormDrafts(migrateDraft(saved.formDrafts ?? {}));
+      void request<AliAnalysis>("analyze", saved.data).then(setAnalysis).catch(() =>
+        setError("Не удалось обновить привязки черновика. Загрузите JSON ещё раз перед применением."),
+      );
       restoreImportStep(
-        saved.workspace ?? (saved.showPreview && saved.preview ? "preview" : null),
+        saved.workspace ?? (saved.formatVersion === 2 && saved.showPreview && saved.preview ? "preview" : null),
       );
     },
   );
@@ -170,31 +201,42 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
     }
   }
   useEffect(() => {
-    const job = pendingVisibility[0];
-    if (!ready || !job || visibilityInFlight.current) return;
-    visibilityInFlight.current = true;
-    void request<AliAnalysis>(
-      job.ignored ? "hide" : "restore", data, undefined, undefined, job.rowIds,
-    )
-      .then(setAnalysis)
-      .catch((err: unknown) => {
-        setSelected((previous) => ({ ...job.previousSelected, ...previous }));
-        setError(
-          `Не удалось сохранить исключение. Изменение видимости отменено. ${err instanceof Error ? err.message : "Попробуйте ещё раз."}`,
-        );
-      })
-      .finally(() => {
-        visibilityInFlight.current = false;
-        setPendingVisibility((previous) => previous.slice(1));
-      });
-  }, [ready, pendingVisibility, data]);
-  const displayRows = analysis?.rows.map((row) => {
-    const job = pendingVisibility.findLast(
-      (entry) => entry.rowIds.includes(row.id),
-    );
-    return job ? { ...row, ignored: job.ignored } : row;
-  }) ?? [];
-  const savingVisibility = pendingVisibility.length > 0;
+    const syncPreferences = () => {
+    try {
+      setPreferences(readImportPreferences(localStorage.getItem(importPreferencesKey(ownerId))));
+    } catch {
+      setError("Не удалось прочитать настройки скрытых заказов в браузере.");
+    }
+    };
+    syncPreferences();
+    window.addEventListener("storage", syncPreferences);
+    return () => window.removeEventListener("storage", syncPreferences);
+  }, [ownerId]);
+  useEffect(() => {
+    const entries = analysis?.legacyIgnoredOrders;
+    if (!entries?.length) return;
+    try {
+      const local = migrateImportPreferences(
+        readImportPreferences(localStorage.getItem(importPreferencesKey(ownerId))), entries,
+      );
+      localStorage.setItem(importPreferencesKey(ownerId), JSON.stringify(local));
+      setPreferences(local);
+      // Только после успешной синхронной записи можно убрать мост из каталога.
+      void request<AliAnalysis>("ackImportPreferences", data, undefined, undefined, entries)
+        .then((result) => setAnalysis((current) => current === analysis ? result : current))
+        .catch(() => setError("Скрытые заказы перенесены в браузер. Очистка старых данных повторится при следующем импорте."));
+    } catch {
+      setError("Браузер не смог сохранить скрытые заказы. Старые исключения пока остаются в каталоге.");
+    }
+  }, [analysis, data, ownerId]);
+  const displayRows = analysis?.rows.map((row) => ({
+    ...row, ignored: isOrderIgnored(preferences, "AliExpress", row.orderId),
+  })) ?? [];
+  useEffect(() => {
+    const hidden = new Set(analysis?.rows.filter((row) => isOrderIgnored(preferences, "AliExpress", row.orderId)).map((row) => row.id));
+    setSelected((current) => Object.keys(current).some((id) => hidden.has(id))
+      ? Object.fromEntries(Object.entries(current).filter(([id]) => !hidden.has(id))) : current);
+  }, [preferences, analysis]);
   const count = Object.keys(selected).length;
 
   async function load(file: File) {
@@ -320,20 +362,19 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
 
   function visibility(row: AliRow) {
     setError("");
-    const rowIds = displayRows
-      .filter((item) => item.id === row.id || (
-        row.itemKey && item.orderId === row.orderId && item.itemKey === row.itemKey
-      ))
-      .map((item) => item.id);
-    const previousSelected = Object.fromEntries(
-      Object.entries(selected).filter(([id]) => rowIds.includes(id)),
-    );
-    setPendingVisibility((previous) => [
-      ...previous, { rowIds, ignored: !row.ignored, previousSelected },
-    ]);
+    const next = setOrderIgnored(preferences, "AliExpress", row.orderId, !row.ignored);
+    try {
+      localStorage.setItem(importPreferencesKey(ownerId), JSON.stringify(next));
+    } catch {
+      setError("Браузер не смог сохранить исключение. Видимость заказа не изменена.");
+      return;
+    }
+    setPreferences(next);
+    const rowIds = displayRows.filter((item) => item.orderId === row.orderId).map((item) => item.id);
     if (!row.ignored) setSelected((previous) => Object.fromEntries(
       Object.entries(previous).filter(([id]) => !rowIds.includes(id)),
     ));
+    setNotice(row.ignored ? "Заказ снова виден." : "Весь заказ скрыт в этом браузере. Вернуть его можно через фильтр «Скрытые».");
   }
 
   async function applyRow(row: AliRow) {
@@ -457,16 +498,16 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                               )?.number ?? purchase.orderId,
                             quantity: purchase.quantity,
                             status: purchase.status,
-                            aliOrderId: (() => {
+                            externalOrderNumber: (() => {
                               const order = previous.logistics.orders.find(
                                 (entry) => entry.id === purchase.orderId,
                               );
                               return order?.source.trim().toLowerCase() === "aliexpress"
-                                ? order.number : order?.aliexpress?.orderId;
+                                ? order.number : undefined;
                             })(),
-                            productUrl: purchase.aliexpress?.productUrl,
+                            productUrl: purchase.productUrl,
                             unitsPerPack:
-                              purchase.aliexpress?.unitsPerPack ?? 1,
+                              purchase.unitsPerPack ?? 1,
                           }),
                         ),
                       },
@@ -516,15 +557,10 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
               Можно уйти и продолжить позже. Компоненты сохранятся после подтверждения.
             </p>
           </div>
-          {savingVisibility ? (
-            <p role="status" className="text-xs text-[var(--color-muted)]">
-              Сохраняю исключения…
-            </p>
-          ) : null}
           <Button
             type="button"
             variant="secondary"
-            disabled={busy || savingVisibility}
+            disabled={busy}
             onClick={resetDraft}
           >
             Удалить черновик
@@ -540,7 +576,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <Button
           variant="secondary"
-          disabled={busy || savingVisibility}
+          disabled={busy}
           onClick={() => fileInput.current?.click()}
         >
           {busy ? <Spinner /> : null}
@@ -764,6 +800,11 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                             >
                               {row.ignored ? "Скрыт" : KINDS[row.kind]}
                             </span>
+                            {!row.ignored && row.changes?.length ? (
+                              <ul className="mt-2 space-y-1 text-xs text-[var(--color-accent)]" aria-label="Что изменится">
+                                {row.changes.map((change) => <li key={change}>{change}</li>)}
+                              </ul>
+                            ) : null}
                             {row.productUrl ? (
                               <a
                                 href={row.productUrl}
@@ -796,7 +837,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                           >
                             {row.ignored
                               ? "Вернуть в импорт"
-                              : "Больше не показывать"}
+                              : "Больше не показывать заказ"}
                           </button>
                         </div>
                         {component ? (
@@ -895,8 +936,8 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                                   {component.purchases
                                     .filter(
                                       (p) =>
-                                        !p.aliOrderId ||
-                                        (p.aliOrderId === row.orderId &&
+                                        !p.externalOrderNumber ||
+                                        (p.externalOrderNumber === row.orderId &&
                                           (!p.productUrl || p.productUrl === row.productUrl)),
                                     )
                                     .map((p) => (
@@ -995,7 +1036,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                             <Button
                               type="button"
                               disabled={
-                                busy || savingVisibility ||
+                                busy ||
                                 (!draft.componentId && !draft.componentDraft)
                               }
                               onClick={() => void applyRow(row)}
@@ -1025,7 +1066,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                   </button>
                 ) : null}
               </div>
-              <Button type="submit" disabled={busy || savingVisibility || count === 0}>
+              <Button type="submit" disabled={busy || count === 0}>
                 {busy ? <Spinner /> : null}Проверить изменения
               </Button>
             </div>

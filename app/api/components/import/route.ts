@@ -7,6 +7,7 @@ import {
 } from "@/lib/schema";
 import { CatalogValidationError } from "@/lib/catalog";
 import { importComponents } from "@/lib/components-repo";
+import { migrateCatalogImport } from "@/lib/import-migration";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
 
   let body: unknown;
   try {
-    body = await req.json();
+    body = migrateCatalogImport(await req.json());
   } catch {
     return NextResponse.json(
       { error: "Файл не является корректным JSON" },
@@ -55,12 +56,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const logistics = logisticsSchema.safeParse({
-    orders: envelope.orders,
-    shipments: envelope.shipments,
-    projects: envelope.projects,
-    ignoredAliItems: envelope.ignoredAliItems,
-  });
+  const logistics = logisticsSchema.safeParse(envelope);
   if (!logistics.success)
     return NextResponse.json(
       { error: "Некорректные заказы или посылки" },
