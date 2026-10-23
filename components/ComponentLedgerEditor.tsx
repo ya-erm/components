@@ -15,6 +15,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { CommentsEditor } from "@/components/CommentsEditor";
 import { InventorySummary } from "@/components/InventorySummary";
 import { ProjectPicker } from "@/components/ProjectPicker";
+import { StatusSelect } from "@/components/StatusSelect";
 
 type Ledger = { purchases: Purchase[]; usages: Usage[] };
 export function logisticsPatch(
@@ -186,24 +187,29 @@ export function ComponentLedgerEditor({
                   label="Статус"
                   htmlFor={`purchase-status-${purchase.id}`}
                 >
-                  <Select
+                  <StatusSelect
                     id={`purchase-status-${purchase.id}`}
                     value={purchase.status}
-                    onChange={(event) =>
+                    onChange={(status) =>
                       updatePurchase(purchase.id, {
-                        status: event.target.value as Purchase["status"],
+                        status,
                       })
                     }
-                  >
-                    {purchase.status === "unassigned" ? (
-                      <option value="unassigned">Уточнить состояние</option>
-                    ) : null}
-                    {PURCHASE_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {PURCHASE_LABELS[status]}
-                      </option>
-                    ))}
-                  </Select>
+                    options={[
+                      ...(purchase.status === "unassigned"
+                        ? [{
+                            value: "unassigned" as const,
+                            label: PURCHASE_LABELS.unassigned,
+                            status: "unassigned" as const,
+                          }]
+                        : []),
+                      ...PURCHASE_STATUSES.map((status) => ({
+                        value: status,
+                        label: PURCHASE_LABELS[status],
+                        status,
+                      })),
+                    ]}
+                  />
                 </Field>
               </div>
               {order ? (
