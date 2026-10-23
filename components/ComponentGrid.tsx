@@ -240,6 +240,7 @@ export function ComponentGrid({
   };
 
   function rememberList(event: MouseEvent<HTMLDivElement>) {
+    if (onSelect) return;
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
     if (!link || link.target === "_blank" || link.origin !== window.location.origin || !/^\/components\/[^/]+$/.test(link.pathname)) return;

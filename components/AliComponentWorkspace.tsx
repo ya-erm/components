@@ -51,6 +51,7 @@ function cataloguePreferences(): {
 }
 
 export function AliComponentWorkspace({
+  ownerId,
   row,
   analysis,
   mode,
@@ -63,6 +64,7 @@ export function AliComponentWorkspace({
   formDraft,
   onFormChange,
 }: {
+  ownerId: string;
   row: AliRow;
   analysis: AliAnalysis;
   mode: "choose" | "new";
@@ -155,6 +157,7 @@ export function AliComponentWorkspace({
               {row.sku ? ` · ${row.sku}` : ""}
             </p>
             <ComponentGrid
+              ownerId={ownerId}
               initial={{
                 items: analysis.components,
                 total: analysis.components.length,

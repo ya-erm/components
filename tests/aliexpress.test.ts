@@ -416,6 +416,20 @@ test("migration merges legacy order aliases without losing purchases, comments o
   assert.equal(JSON.stringify(migrated).includes('"aliexpress":'), false);
 });
 
+test("import migration preserves project descriptions, photos and usage links from the current schema", () => {
+  const raw = {
+    version: 2, orders: [{ id: "order", number: "manual" }],
+    projects: [{ id: "robot", name: "Robot", description: "# Assembly notes", images: ["https://example.com/second.jpg", "https://example.com/first.jpg"] }],
+    items: [{ id: "part", createdAt: "", updatedAt: "", data: {
+      name: "Board", purchases: [{ id: "buy", orderId: "order", quantity: 2, status: "delivered" }],
+      usages: [{ id: "usage", projectId: "robot", quantity: 1 }],
+    } }],
+  };
+  const migrated = parseCatalog(migrateCatalogImport(raw));
+  assert.deepEqual(migrated.projects, raw.projects);
+  assert.deepEqual(migrated.items[0].data.usages, raw.items[0].data.usages);
+});
+
 test("old exports, missing values, cached tracking, unknown and regressive statuses do not damage saved data", () => {
   const data = source();
   data.orders[0].status = "Completed";

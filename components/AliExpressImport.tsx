@@ -499,6 +499,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
     <div className="flex flex-col gap-5">
       {workspace && analysis && selected[workspace.rowId] ? (
         <AliComponentWorkspace
+          ownerId={ownerId}
           key={`${workspace.rowId}:${workspace.mode}`}
           mode={workspace.mode}
           row={analysis.rows.find((row) => row.id === workspace.rowId)!}
