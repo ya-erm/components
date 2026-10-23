@@ -10,6 +10,7 @@ import type { ComponentDTO } from "@/lib/components-repo";
 import { COMPONENT_STATUSES, STATUS_LABELS, mainImage } from "@/lib/schema";
 import { ComponentCard, NoImageIcon } from "@/components/ComponentCard";
 import { InventorySummary } from "@/components/InventorySummary";
+import { StatusSelect } from "@/components/StatusSelect";
 import { ChevronDownIcon, FilterIcon, Input, SearchIcon, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { CenterState, Spinner } from "@/components/ui/states";
@@ -223,19 +224,20 @@ export function ComponentGrid({
 
         <div className={clsx("flex-wrap gap-2 sm:flex", filtersOpen ? "flex" : "hidden")}>
           <div className="min-w-[47%] flex-1 sm:min-w-32">
-            <Select
+            <StatusSelect
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={setStatus}
               aria-label="Фильтр по статусу"
               className="py-2 text-sm"
-            >
-              <option value="">Все статусы</option>
-              {COMPONENT_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </option>
-              ))}
-            </Select>
+              options={[
+                { value: "", label: "Все статусы" },
+                ...COMPONENT_STATUSES.map((s) => ({
+                  value: s,
+                  label: STATUS_LABELS[s],
+                  status: s,
+                })),
+              ]}
+            />
           </div>
 
           <div className="min-w-[47%] flex-1 sm:min-w-32">
