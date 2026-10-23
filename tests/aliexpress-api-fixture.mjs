@@ -1,5 +1,6 @@
 // Запускать только с tests/s3-fixture.mjs и тестовым dev-сервером на localhost:3000.
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 const base = "http://localhost:3000";
 const cookies = new Map();
@@ -245,6 +246,30 @@ const uiFixture = await req("/api/components/import", {
   orders: [{ id: "ui-order", number: "ui-order", source: "AliExpress", trackingNumbers: ["UI-TRACK-1"], importState: { exportedAt: "2026-10-20T12:00:00.000Z" } }], shipments: [],
 });
 assert.equal(uiFixture.status, 200);
+
+// Необязательная живая проверка CDN → сервер → тестовый S3.
+if (process.env.IMPORT_TEST_IMAGE_FILE) {
+  const imageSource = JSON.parse(await readFile(process.env.IMPORT_TEST_IMAGE_FILE, "utf8"));
+  const imageUrl = imageSource.orders.flatMap((order) => order.items).find((item) => item.image_url)?.image_url;
+  assert.ok(imageUrl);
+  const withImage = structuredClone(data);
+  withImage.orders[0].order_id = `fixture-image-${runId}`;
+  withImage.orders[0].items[0].image_url = imageUrl;
+  const imageRows = await ali("analyze", undefined, undefined, withImage);
+  const imageChoice = [{ rowId: imageRows.rows[0].id, unitsPerPack: 1 }];
+  const imagePreview = await ali("preview", imageChoice, undefined, withImage);
+  assert.deepEqual(imagePreview.changes[0].after.data.images, [imageUrl]);
+  const imageApplied = await ali("apply", imageChoice, imagePreview.token, withImage);
+  const ownImage = imageApplied.changes[0].after.data.images[0];
+  assert.ok(ownImage.startsWith("http://127.0.0.1:19000/components-test/public/images/fixture-demo/"));
+  const uploadedResponse = await fetch(ownImage);
+  assert.equal(uploadedResponse.status, 200);
+  assert.ok((await uploadedResponse.arrayBuffer()).byteLength > 0);
+  const imageReplay = await ali("preview", imageChoice, undefined, withImage);
+  await ali("apply", imageChoice, imageReplay.token, withImage);
+  assert.deepEqual(imageReplay.changes[0].after.data.images, [ownImage]);
+  console.log("Image copy: preview keeps source URL; confirmed new component uses S3; replay reuses the saved photo.");
+}
 
 console.log(
   "Import API: analysis, apply, replay, delivery update, stale preview 409, backup migration, S3 conditional writes and concurrent migration acknowledgment passed.",

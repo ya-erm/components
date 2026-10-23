@@ -2,6 +2,7 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { getJsonVersioned, putJsonConditional } from "../lib/s3";
 import { migrateCatalogImport } from "../lib/import-migration";
@@ -35,7 +36,8 @@ async function main() {
       orders += catalog.orders.length;
       purchases += catalog.items.reduce((sum, item) => sum + (item.data.purchases?.length ?? 0), 0);
       ignoredOrders += catalog.legacyIgnoredOrders?.length ?? 0;
-      if (JSON.stringify(stored.value) === JSON.stringify(catalog)) continue;
+      // Порядок ключей JSON не означает изменение данных.
+      if (isDeepStrictEqual(stored.value, JSON.parse(JSON.stringify(catalog)))) continue;
       changed++;
       if (apply) {
         const backupKey = `migrations/import-storage/${run}/${object.Key}`;

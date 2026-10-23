@@ -7,11 +7,13 @@ import {
 } from "@/lib/s3";
 import {
   AliConflictError,
+  AliImportError,
   aliExportSchema,
   type AliSelection,
   planAliImport,
 } from "./aliexpress";
 import type { z } from "zod";
+import { copyNewComponentImages, removeUnusedImportImages } from "./import-images";
 import {
   type ComponentData,
   type Logistics,
@@ -70,16 +72,25 @@ export async function applyAliImport(
       "Каталог изменился после предпросмотра. Проверьте обновлённое сравнение.",
     );
   if (JSON.stringify(stored.value) !== JSON.stringify(plan.catalog)) {
+    const uploaded: string[] = [];
     try {
+      await copyNewComponentImages(current, plan.catalog, ownerId, uploaded);
       await putJsonConditional(key, plan.catalog, stored.etag);
     } catch (error) {
+      if (uploaded.length) {
+        try {
+          await removeUnusedImportImages(uploaded, await readCatalog(ownerId));
+        } catch {
+          // Если каталог недоступен, оставляем файл: он может быть уже сохранён в карточке.
+        }
+      }
       const status = (error as { $metadata?: { httpStatusCode?: number } })
         .$metadata?.httpStatusCode;
       if (status === 412 || status === 409)
         throw new AliConflictError(
           "Каталог изменился во время сохранения. Повторите предпросмотр.",
         );
-      throw error;
+      throw new AliImportError(error instanceof Error ? error.message : "Не удалось сохранить импорт.");
     }
   }
   return plan.preview;

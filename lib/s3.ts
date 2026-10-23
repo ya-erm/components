@@ -51,7 +51,7 @@ const EXT_BY_TYPE: Record<string, string> = {
 };
 
 export function isAllowedImageType(type: string): boolean {
-  return type in EXT_BY_TYPE;
+  return Object.hasOwn(EXT_BY_TYPE, type);
 }
 
 /** Загружает один файл в S3 и возвращает публичный URL. */
