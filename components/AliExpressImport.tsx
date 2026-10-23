@@ -16,6 +16,13 @@ import { Spinner } from "@/components/ui/states";
 import { ComponentCard } from "@/components/ComponentCard";
 import dynamic from "next/dynamic";
 import { AliImportPreview } from "@/components/AliImportPreview";
+import { AliKindFilter } from "@/components/AliKindFilter";
+import {
+  ALI_KIND_LABELS as KINDS,
+  matchesAliKinds,
+  parseAliKinds,
+  type AliKindFilter as Kind,
+} from "@/lib/aliexpress-filter";
 import type { ComponentFormDraft } from "@/components/ComponentForm";
 import { useImportDraft } from "@/components/useImportDraft";
 import {
@@ -50,12 +57,6 @@ type VisibilityJob = {
   rowIds: string[];
   ignored: boolean;
   previousSelected: Record<string, Draft>;
-};
-const KINDS = {
-  new: "Новый",
-  changed: "Есть изменения",
-  unchanged: "Без изменений",
-  review: "Нужно уточнить",
 };
 function initialDraft(row: AliRow): Draft {
   return {
@@ -100,7 +101,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   const [analysis, setAnalysis] = useState<AliAnalysis | null>(null);
   const [selected, setSelected] = useState<Record<string, Draft>>({});
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("");
+  const [kinds, setKinds] = useState<Kind[]>([]);
   const [since, setSince] = useState("");
   const [preview, setPreview] = useState<AliPreview | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -119,10 +120,10 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   >({});
   const draftSnapshot = useMemo(
     () => analysis && !done ? {
-      fileName, data, analysis, selected, query, kind, since, preview,
+      fileName, data, analysis, selected, query, kinds, since, preview,
       showPreview, done, workspace, formDrafts, pendingVisibility,
     } : null,
-    [fileName, data, analysis, selected, query, kind, since, preview,
+    [fileName, data, analysis, selected, query, kinds, since, preview,
       showPreview, done, workspace, formDrafts, pendingVisibility],
   );
   const { ready, storageError, savedAt } = useImportDraft(
@@ -136,7 +137,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
       setAnalysis(saved.analysis);
       setSelected(saved.selected);
       setQuery(saved.query);
-      setKind(saved.kind);
+      setKinds(parseAliKinds(saved.kinds ?? (saved as { kind?: unknown }).kind));
       setSince(saved.since);
       setPreview(saved.preview);
       setShowPreview(saved.showPreview);
@@ -234,7 +235,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
     setAnalysis(null);
     setData(null);
     setQuery("");
-    setKind("");
+    setKinds([]);
     setSince("");
     setError("");
     setNotice("");
@@ -403,9 +404,7 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
   const filtered =
     displayRows.filter(
       (row) =>
-        (kind === "hidden"
-          ? row.ignored
-          : !row.ignored && (!kind || row.kind === kind)) &&
+        matchesAliKinds(row, kinds) &&
         (!since || row.dateSort >= since) &&
         (!query ||
           [row.orderId, row.title, row.sku, row.store, ...row.trackingNumbers]
@@ -644,22 +643,12 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                 />
               </Field>
               <Field label="Показать" htmlFor="ali-kind">
-                <Select
+                <AliKindFilter
                   id="ali-kind"
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value)}
-                >
-                  <option value="">Все позиции</option>
-                  <option value="hidden">
-                    Скрытые ({displayRows.filter((row) => row.ignored).length}
-                    )
-                  </option>
-                  {Object.entries(KINDS).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
+                  value={kinds}
+                  onChange={setKinds}
+                  hiddenCount={displayRows.filter((row) => row.ignored).length}
+                />
               </Field>
               <Field label="Заказы начиная с" htmlFor="ali-since">
                 <Input
@@ -769,6 +758,16 @@ export function AliExpressImport({ ownerId }: { ownerId: string }) {
                             >
                               {row.ignored ? "Скрыт" : KINDS[row.kind]}
                             </span>
+                            {row.productUrl ? (
+                              <a
+                                href={row.productUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="ml-3 inline-block py-1 text-xs text-[var(--color-accent)] hover:underline"
+                              >
+                                Товар ↗
+                              </a>
+                            ) : null}
                           </div>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
