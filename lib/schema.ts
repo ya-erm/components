@@ -96,13 +96,18 @@ export const orderSchema = z.object({
   date: optionalText(4000),
   sourceStatus: optionalText(4000),
   totalText: optionalText(4000),
-  trackingDetails: z.array(z.object({
-    trackingNumber: identifier,
-    carrier: optionalText(4000),
-    status: optionalText(4000),
-    lastEvent: optionalText(4000),
-    lastEventTime: optionalText(4000),
-  })).max(100).optional(),
+  trackingDetails: z
+    .array(
+      z.object({
+        trackingNumber: identifier,
+        carrier: optionalText(4000),
+        status: optionalText(4000),
+        lastEvent: optionalText(4000),
+        lastEventTime: optionalText(4000),
+      }),
+    )
+    .max(100)
+    .optional(),
   importState: z.object({ exportedAt: z.string().datetime() }).optional(),
   comments: z.array(commentSchema).max(500).default([]),
   trackingNumbers: z
@@ -117,6 +122,14 @@ export const projectSchema = z.object({
   id: identifier,
   name: z.string().trim().min(1, "Укажите название проекта").max(200),
   description: optionalText(20000),
+  componentOrder: z
+    .array(identifier)
+    .max(10000)
+    .refine(
+      (ids) => new Set(ids).size === ids.length,
+      "Повторяющиеся компоненты",
+    )
+    .optional(),
   images: z
     .array(
       z
@@ -159,7 +172,10 @@ export const purchaseSchema = z.object({
       needsManualMatch: z.boolean().optional(),
       lastQuantity: count.optional(),
       lastStatus: z.enum([...PURCHASE_STATUSES, "unassigned"]),
-      manualFields: z.array(z.enum(["quantity", "status"])).max(2).default([]),
+      manualFields: z
+        .array(z.enum(["quantity", "status"]))
+        .max(2)
+        .default([]),
     })
     .optional(),
 });
@@ -179,7 +195,10 @@ export const shipmentSchema = z.object({
 });
 export const logisticsSchema = z.object({
   // Удаляется после подтверждённого переноса старых исключений в браузер.
-  legacyIgnoredOrders: z.array(z.object({ source: identifier, id: identifier })).max(10000).optional(),
+  legacyIgnoredOrders: z
+    .array(z.object({ source: identifier, id: identifier }))
+    .max(10000)
+    .optional(),
   orders: z.array(orderSchema).max(5000).default([]),
   shipments: z.array(shipmentSchema).max(5000).default([]),
   projects: z.array(projectSchema).max(5000).optional(),

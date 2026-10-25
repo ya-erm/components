@@ -35,7 +35,7 @@ export function parseCatalog(raw: unknown): Catalog {
   const catalog = catalogSchema.parse(
     Array.isArray(raw)
       ? { version: 2, items: raw }
-      : raw ?? { version: 2, items: [] },
+      : (raw ?? { version: 2, items: [] }),
   );
   return normalizeCatalog({ ...catalog, projects: catalog.projects ?? [] });
 }
@@ -155,7 +155,11 @@ export function normalizeCatalog(catalog: Catalog): Catalog {
   return normalized;
 }
 
-export function mergeLogistics(catalog: Catalog, patch?: Logistics): Catalog {
+export function mergeLogistics(
+  catalog: Catalog,
+  patch?: Logistics,
+  options: { restoreProjectOrder?: boolean } = {},
+): Catalog {
   if (!patch) return catalog;
   for (const collection of [
     patch.orders,
@@ -176,12 +180,44 @@ export function mergeLogistics(catalog: Catalog, patch?: Logistics): Catalog {
     ...catalog,
     orders: merge(catalog.orders, patch.orders),
     shipments: merge(catalog.shipments, patch.shipments),
-    projects: merge(catalog.projects, patch.projects ?? []),
+    // Forms preserve server ordering; explicit backup imports restore their order.
+    projects: options.restoreProjectOrder
+      ? merge(
+          patch.projects ?? [],
+          catalog.projects.filter(
+            (project) =>
+              !patch.projects?.some((incoming) => incoming.id === project.id),
+          ),
+        )
+      : merge(
+          catalog.projects,
+          (patch.projects ?? []).map((project) => {
+            const current = catalog.projects.find(
+              (value) => value.id === project.id,
+            );
+            if (!current) return project;
+            const { componentOrder: _ignored, ...details } = project;
+            return {
+              ...details,
+              ...(current.componentOrder
+                ? { componentOrder: current.componentOrder }
+                : {}),
+            };
+          }),
+        ),
     ...(patch.legacyIgnoredOrders
       ? {
-          legacyIgnoredOrders: [...new Map([
-            ...(catalog.legacyIgnoredOrders ?? []), ...patch.legacyIgnoredOrders,
-          ].map((entry) => [JSON.stringify([entry.source.toLowerCase(), entry.id]), entry])).values()],
+          legacyIgnoredOrders: [
+            ...new Map(
+              [
+                ...(catalog.legacyIgnoredOrders ?? []),
+                ...patch.legacyIgnoredOrders,
+              ].map((entry) => [
+                JSON.stringify([entry.source.toLowerCase(), entry.id]),
+                entry,
+              ]),
+            ).values(),
+          ],
         }
       : {}),
   };

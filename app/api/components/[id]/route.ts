@@ -1,3 +1,4 @@
+import { ProjectConflictError } from "@/lib/project-mutations";
 import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/session";
 import { componentSaveSchema } from "@/lib/schema";
@@ -56,6 +57,8 @@ export async function PUT(req: Request, { params }: Params) {
       return NextResponse.json({ error: "Не найдено" }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
+    if (error instanceof ProjectConflictError)
+      return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof CatalogValidationError)
       return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;
@@ -68,7 +71,13 @@ export async function DELETE(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
   const { id } = await params;
-  const ok = await deleteComponent(ownerId, id);
-  if (!ok) return NextResponse.json({ error: "Не найдено" }, { status: 404 });
-  return NextResponse.json({ ok: true });
+  try {
+    const ok = await deleteComponent(ownerId, id);
+    if (!ok) return NextResponse.json({ error: "Не найдено" }, { status: 404 });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof ProjectConflictError)
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
 }

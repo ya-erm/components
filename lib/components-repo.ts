@@ -1,10 +1,6 @@
+import { mutateProjectCatalog } from "./project-mutations";
 import { randomUUID } from "crypto";
-import {
-  getJson,
-  putJson,
-  getJsonVersioned,
-  putJsonConditional,
-} from "@/lib/s3";
+import { getJson, getJsonVersioned, putJsonConditional } from "@/lib/s3";
 import {
   AliConflictError,
   AliImportError,
@@ -13,7 +9,10 @@ import {
   planAliImport,
 } from "./aliexpress";
 import type { z } from "zod";
-import { copyNewComponentImages, removeUnusedImportImages } from "./import-images";
+import {
+  copyNewComponentImages,
+  removeUnusedImportImages,
+} from "./import-images";
 import {
   type ComponentData,
   type Logistics,
@@ -90,7 +89,9 @@ export async function applyAliImport(
         throw new AliConflictError(
           "Каталог изменился во время сохранения. Повторите предпросмотр.",
         );
-      throw new AliImportError(error instanceof Error ? error.message : "Не удалось сохранить импорт.");
+      throw new AliImportError(
+        error instanceof Error ? error.message : "Не удалось сохранить импорт.",
+      );
     }
   }
   return plan.preview;
@@ -102,29 +103,35 @@ export async function acknowledgeImportPreferences(
   entries: { source: string; id: string }[],
 ) {
   const key = catalogKey(ownerId);
-  const acknowledged = new Set(entries.map((entry) =>
-    JSON.stringify([entry.source.toLowerCase(), entry.id]),
-  ));
+  const acknowledged = new Set(
+    entries.map((entry) =>
+      JSON.stringify([entry.source.toLowerCase(), entry.id]),
+    ),
+  );
   for (let attempt = 0; attempt < 3; attempt++) {
     const stored = await getJsonVersioned<unknown>(key);
     if (stored.value !== null && !stored.etag)
       throw new AliConflictError("Не удалось получить версию каталога");
     const current = parseCatalog(stored.value);
     const catalog = { ...current };
-    const remaining = current.legacyIgnoredOrders?.filter((entry) =>
-      !acknowledged.has(JSON.stringify([entry.source.toLowerCase(), entry.id])),
+    const remaining = current.legacyIgnoredOrders?.filter(
+      (entry) =>
+        !acknowledged.has(
+          JSON.stringify([entry.source.toLowerCase(), entry.id]),
+        ),
     );
     if (remaining?.length) catalog.legacyIgnoredOrders = remaining;
     else delete catalog.legacyIgnoredOrders;
-    if (JSON.stringify(stored.value) === JSON.stringify(catalog)) return current;
+    if (JSON.stringify(stored.value) === JSON.stringify(catalog))
+      return current;
     try {
       await putJsonConditional(key, catalog, stored.etag);
       return catalog;
     } catch (error) {
       if (
         ![409, 412].includes(
-          (error as { $metadata?: { httpStatusCode?: number } })
-            .$metadata?.httpStatusCode ?? 0,
+          (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+            ?.httpStatusCode ?? 0,
         )
       )
         throw error;
@@ -133,30 +140,35 @@ export async function acknowledgeImportPreferences(
   throw new AliConflictError("Каталог изменился. Повторите действие.");
 }
 
-async function writeCatalog(
-  ownerId: string,
-  catalog: Catalog,
-): Promise<Catalog> {
-  const normalized = normalizeCatalog(catalog);
-  await putJson(catalogKey(ownerId), normalized);
-  return normalized;
-}
-
 export async function getLogistics(ownerId: string): Promise<Logistics> {
   const { orders, shipments, projects } = await readCatalog(ownerId);
   return { orders, shipments, projects };
 }
 
-export async function saveProject(ownerId: string, project: Project, create: boolean): Promise<Project | null> {
-  const catalog = await readCatalog(ownerId);
-  const index = catalog.projects.findIndex((value) => value.id === project.id);
-  if (create && index !== -1)
-    throw new CatalogValidationError("Проект уже существует");
-  if (!create && index === -1) return null;
-  if (create) catalog.projects.push(project);
-  else catalog.projects[index] = project;
-  const saved = await writeCatalog(ownerId, catalog);
-  return saved.projects.find((value) => value.id === project.id)!;
+export async function saveProject(
+  ownerId: string,
+  project: Project,
+  create: boolean,
+): Promise<Project | null> {
+  return mutateProjectCatalog(ownerId, (catalog) => {
+    const index = catalog.projects.findIndex(
+      (value) => value.id === project.id,
+    );
+    if (create && index !== -1)
+      throw new CatalogValidationError("Проект уже существует");
+    if (!create && index === -1) return null;
+    // Only the dedicated ordering endpoint may change this metadata.
+    const { componentOrder: _ignored, ...details } = project;
+    const saved = {
+      ...details,
+      ...(!create && catalog.projects[index].componentOrder
+        ? { componentOrder: catalog.projects[index].componentOrder }
+        : {}),
+    };
+    if (create) catalog.projects.push(saved);
+    else catalog.projects[index] = saved;
+    return saved;
+  });
 }
 
 function toDTO(item: StoredItem): ComponentDTO {
@@ -288,17 +300,15 @@ export async function createComponent(
   data: ComponentData,
   logistics?: Logistics,
 ): Promise<ComponentDTO> {
-  const catalog = mergeLogistics(await readCatalog(ownerId), logistics);
-  const now = new Date().toISOString();
-  const item: StoredItem = {
-    id: randomUUID(),
-    data,
-    createdAt: now,
-    updatedAt: now,
-  };
-  catalog.items.push(item);
-  const saved = await writeCatalog(ownerId, catalog);
-  return toDTO(saved.items.find((value) => value.id === item.id)!);
+  const id = randomUUID();
+  return mutateProjectCatalog(ownerId, (catalog) => {
+    Object.assign(catalog, mergeLogistics(catalog, logistics));
+    const now = new Date().toISOString();
+    catalog.items.push({ id, data, createdAt: now, updatedAt: now });
+    return toDTO(
+      normalizeCatalog(catalog).items.find((value) => value.id === id)!,
+    );
+  });
 }
 
 export async function updateComponent(
@@ -307,27 +317,29 @@ export async function updateComponent(
   data: ComponentData,
   logistics?: Logistics,
 ): Promise<ComponentDTO | null> {
-  const catalog = mergeLogistics(await readCatalog(ownerId), logistics);
-  const idx = catalog.items.findIndex((i) => i.id === id);
-  if (idx === -1) return null;
-  catalog.items[idx] = {
-    ...catalog.items[idx],
-    data,
-    updatedAt: new Date().toISOString(),
-  };
-  const saved = await writeCatalog(ownerId, catalog);
-  return toDTO(saved.items[idx]);
+  return mutateProjectCatalog(ownerId, (catalog) => {
+    Object.assign(catalog, mergeLogistics(catalog, logistics));
+    const idx = catalog.items.findIndex((item) => item.id === id);
+    if (idx === -1) return null;
+    catalog.items[idx] = {
+      ...catalog.items[idx],
+      data,
+      updatedAt: new Date().toISOString(),
+    };
+    return toDTO(normalizeCatalog(catalog).items[idx]);
+  });
 }
 
 export async function deleteComponent(
   ownerId: string,
   id: string,
 ): Promise<boolean> {
-  const catalog = await readCatalog(ownerId);
-  const next = catalog.items.filter((i) => i.id !== id);
-  if (next.length === catalog.items.length) return false;
-  await writeCatalog(ownerId, { ...catalog, items: next });
-  return true;
+  return mutateProjectCatalog(ownerId, (catalog) => {
+    const next = catalog.items.filter((item) => item.id !== id);
+    if (next.length === catalog.items.length) return false;
+    catalog.items = next;
+    return true;
+  });
 }
 
 export async function importComponents(
@@ -335,37 +347,39 @@ export async function importComponents(
   items: { id?: string; data: ComponentData }[],
   logistics?: Logistics,
 ): Promise<{ created: number; updated: number }> {
-  const catalog = mergeLogistics(await readCatalog(ownerId), logistics);
-  const ownIds = new Set(catalog.items.map((i) => i.id));
-  const now = new Date().toISOString();
-
-  let created = 0;
-  let updated = 0;
-
-  for (const item of items) {
-    if (item.id && ownIds.has(item.id)) {
-      const idx = catalog.items.findIndex((i) => i.id === item.id);
-      if (idx !== -1) {
-        catalog.items[idx] = {
-          ...catalog.items[idx],
+  const incoming = items.map((item) => ({
+    ...item,
+    id: item.id || randomUUID(),
+  }));
+  return mutateProjectCatalog(ownerId, (catalog) => {
+    Object.assign(
+      catalog,
+      mergeLogistics(catalog, logistics, { restoreProjectOrder: true }),
+    );
+    const ownIds = new Set(catalog.items.map((item) => item.id));
+    const now = new Date().toISOString();
+    let created = 0;
+    let updated = 0;
+    for (const item of incoming) {
+      if (ownIds.has(item.id)) {
+        const index = catalog.items.findIndex((value) => value.id === item.id);
+        catalog.items[index] = {
+          ...catalog.items[index],
           data: item.data,
           updatedAt: now,
         };
         updated++;
+      } else {
+        catalog.items.push({
+          id: item.id,
+          data: item.data,
+          createdAt: now,
+          updatedAt: now,
+        });
+        ownIds.add(item.id);
+        created++;
       }
-    } else {
-      const id = item.id || randomUUID();
-      catalog.items.push({
-        id,
-        data: item.data,
-        createdAt: now,
-        updatedAt: now,
-      });
-      ownIds.add(id);
-      created++;
     }
-  }
-
-  await writeCatalog(ownerId, catalog);
-  return { created, updated };
+    return { created, updated };
+  });
 }

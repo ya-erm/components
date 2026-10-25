@@ -59,6 +59,7 @@ test("project saves preserve stock, usage links, and other owners' catalogs", as
       response.end();
     } else if (objects.has(objectKey)) {
       response.setHeader("Content-Type", "application/json");
+      response.setHeader("ETag", '"fixture"');
       response.end(objects.get(objectKey));
     } else {
       response.writeHead(404, { "Content-Type": "application/xml" });
