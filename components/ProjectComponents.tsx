@@ -2,14 +2,17 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { ComponentDTO } from "@/lib/components-repo";
-import { inventoryTotals, type Project } from "@/lib/schema";
+import { type Project } from "@/lib/schema";
 import { getProjectComponentsVersion } from "@/lib/project-components";
 import { SortableList } from "@/components/SortableList";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
+import { ComponentGrid } from "@/components/ComponentGrid";
+import { ImportWorkspace } from "@/components/ImportWorkspace";
+import { AppHeader } from "@/components/AppHeader";
 
 type Selection = { id: string; quantity: string };
 
@@ -38,9 +41,11 @@ function orderedItems(items: ComponentDTO[], project: Project) {
 export function ProjectComponents({
   initialProject,
   initialItems,
+  ownerId,
 }: {
   initialProject: Project;
   initialItems: ComponentDTO[];
+  ownerId: string;
 }) {
   const router = useRouter();
   const [project, setProject] = useState(initialProject);
@@ -49,7 +54,6 @@ export function ProjectComponents({
   const editingRef = useRef(false);
   const [selection, setSelection] = useState<Selection[]>([]);
   const [expected, setExpected] = useState("");
-  const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +79,6 @@ export function ProjectComponents({
       }),
     );
     setExpected(getProjectComponentsVersion(items, project.id));
-    setQuery("");
     setError(null);
     setNotice("");
     editingRef.current = true;
@@ -86,7 +89,6 @@ export function ProjectComponents({
     editingRef.current = false;
     setEditing(false);
     setError(null);
-    setQuery("");
     requestAnimationFrame(() => selectionButton.current?.focus());
     router.refresh();
   }
@@ -179,12 +181,34 @@ export function ProjectComponents({
   }
 
   const selectionById = new Map(selection.map((entry) => [entry.id, entry]));
-  const needle = query.trim().toLocaleLowerCase();
-  const matching = items.filter((item) =>
-    [item.data.name, item.data.type, ...item.data.tags].some((text) =>
-      text?.toLocaleLowerCase().includes(needle),
-    ),
+  const gridInitial = useMemo(
+    () => ({
+      items: [...items].sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
+      total: items.length,
+      page: 1,
+      pageSize: 50,
+    }),
+    [items],
   );
+  function toggleComponent(item: ComponentDTO) {
+    if (busy.current) return;
+    const used = usedBy(item, project.id);
+    setSelection((current) =>
+      current.some((entry) => entry.id === item.id)
+        ? current.filter((entry) => entry.id !== item.id)
+        : [
+            ...current,
+            {
+              id: item.id,
+              quantity:
+                used.linked && !used.unknown ? String(used.quantity) : "",
+            },
+          ],
+    );
+  }
   return (
     <section
       className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 sm:p-4"
@@ -203,91 +227,54 @@ export function ProjectComponents({
         </Button>
       </div>
       {editing ? (
-        <form
-          onSubmit={save}
-          aria-label="Выбор компонентов проекта"
-          onKeyDown={(event) => {
-            if (event.key === "Escape" && !saving) {
-              event.preventDefault();
-              closePicker();
-            }
+        <ImportWorkspace
+          label="Выбор компонентов проекта"
+          onClose={() => {
+            if (!busy.current) closePicker();
           }}
         >
-          <fieldset disabled={saving} className="flex min-w-0 flex-col gap-3">
-            <p className="text-sm text-[var(--color-muted)]">
-              Отметьте используемые компоненты и укажите количество. Пустое
-              количество означает «неизвестно». Снятие галочки убирает
-              использование только из этого проекта, не удаляя компонент.
-            </p>
-            <Input
-              autoFocus
-              aria-label="Найти компонент в каталоге"
-              placeholder="Название, тип или тег"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+          <form
+            onSubmit={save}
+            aria-label="Выбор компонентов проекта"
+            className="flex min-h-dvh flex-col"
+          >
+            <AppHeader
+              title="Компоненты"
+              left={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={saving}
+                  onClick={closePicker}
+                >
+                  Отмена
+                </Button>
+              }
             />
-            <p className="text-sm" role="status">
-              Выбрано: {selection.length} · Найдено: {matching.length}
-            </p>
-            <div className="max-h-[55vh] overflow-y-auto overscroll-contain rounded-lg border border-[var(--color-border)]">
-              {matching.map((item) => {
-                const selected = selectionById.get(item.id);
-                const stock = inventoryTotals(item.data).find(
-                  (total) => total.status === "in_stock",
-                )!;
-                const used = usedBy(item, project.id);
-                return (
-                  <div
-                    key={item.id}
-                    className={`border-b border-[var(--color-border)] p-3 last:border-0 ${selected ? "bg-[var(--color-surface-2)]" : ""}`}
-                  >
-                    <label className="flex cursor-pointer items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="size-5 shrink-0 accent-[var(--color-accent)]"
-                        checked={!!selected}
-                        onChange={(event) =>
-                          setSelection((current) =>
-                            event.target.checked
-                              ? [
-                                  ...current,
-                                  {
-                                    id: item.id,
-                                    quantity:
-                                      used.linked && !used.unknown
-                                        ? String(used.quantity)
-                                        : "",
-                                  },
-                                ]
-                              : current.filter((entry) => entry.id !== item.id),
-                          )
-                        }
-                      />
-                      <Thumbnail item={item} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block break-words text-sm font-medium">
-                          {item.data.name}
-                        </span>
-                        <span className="block text-xs text-[var(--color-muted)]">
-                          {item.data.type ? `${item.data.type} · ` : ""}Остаток:{" "}
-                          {stock.unknown
-                            ? `${stock.quantity}+`
-                            : stock.quantity}{" "}
-                          шт.
-                        </span>
-                      </span>
-                    </label>
-                    {selected ? (
-                      <label className="mt-2 flex items-center justify-between gap-3 text-sm">
-                        <span>
-                          Использовано, шт.
-                          {used.unknown && used.quantity > 0 ? (
-                            <span className="block text-xs text-[var(--color-muted)]">
-                              Сейчас {used.quantity}+; пустое поле сохранит
-                              записи
-                            </span>
-                          ) : null}
-                        </span>
+            <fieldset
+              disabled={saving}
+              className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-6"
+            >
+              <p className="py-3 text-sm text-[var(--color-muted)]">
+                Нажимайте на карточки, чтобы выбрать компоненты для «
+                {project.name}». Количество можно задать под выбранной
+                карточкой; пустое поле означает «неизвестно».
+              </p>
+              <ComponentGrid
+                ownerId={ownerId}
+                initial={gridInitial}
+                initialViewMode="grid"
+                initialCollapsedGroups={{ type: [], tag: [] }}
+                onSelect={toggleComponent}
+                selection={{
+                  selectedIds: new Set(selectionById.keys()),
+                  renderDetails: (item) => {
+                    const selected = selectionById.get(item.id);
+                    if (!selected) return null;
+                    const used = usedBy(item, project.id);
+                    return (
+                      <label className="flex min-w-0 flex-col gap-1 p-2 text-xs">
+                        <span>Использовано, шт.</span>
                         <Input
                           aria-label={`Использовано ${item.data.name}`}
                           type="text"
@@ -304,40 +291,46 @@ export function ProjectComponents({
                               ),
                             )
                           }
-                          className="w-32 shrink-0"
+                          className="min-w-0 py-2"
                         />
+                        {used.unknown && used.quantity > 0 ? (
+                          <span className="text-[var(--color-muted)]">
+                            Сейчас {used.quantity}+; пустое поле сохранит записи
+                          </span>
+                        ) : null}
                       </label>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {!matching.length ? (
-                <p className="p-3 text-sm text-[var(--color-muted)]">
-                  {items.length
-                    ? "Компоненты не найдены. Измените поиск."
-                    : "Каталог пуст. Сначала создайте компонент в каталоге."}
-                </p>
-              ) : null}
+                    );
+                  },
+                }}
+              />
+            </fieldset>
+            <div className="sticky bottom-0 z-20 border-t border-[var(--color-border)] bg-[var(--color-bg)]/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+              <div className="mx-auto flex max-w-5xl flex-col gap-2">
+                {error ? (
+                  <p role="alert" className="text-sm text-red-500">
+                    {error}
+                  </p>
+                ) : null}
+                <div className="flex items-center justify-between gap-3">
+                  <p role="status" className="text-sm">
+                    Выбрано: {selection.length}
+                    <span className="block text-xs text-[var(--color-muted)]">
+                      Включая скрытые фильтрами
+                    </span>
+                  </p>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Сохранение…" : "Сохранить компоненты"}
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit">
-                {saving ? "Сохранение…" : "Сохранить компоненты"}
-              </Button>
-              <Button type="button" variant="secondary" onClick={closePicker}>
-                Отмена
-              </Button>
-            </div>
-          </fieldset>
-        </form>
+          </form>
+        </ImportWorkspace>
       ) : (
         <>
-          {linked.length > 1 ? (
-            <p className="mb-3 text-xs text-[var(--color-muted)]">
-              Перетаскивайте за ⠿, чтобы изменить порядок компонентов.
-            </p>
-          ) : null}
           <SortableList
             items={linked}
+            compact
             disabled={saving}
             label="Используемые компоненты"
             getLabel={(item) => item.data.name}
@@ -346,7 +339,7 @@ export function ProjectComponents({
             {(item, handle) => {
               const used = usedBy(item, project.id);
               return (
-                <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] p-2">
+                <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] p-1">
                   {handle}
                   <Thumbnail item={item} />
                   <Link
@@ -378,7 +371,7 @@ export function ProjectComponents({
       <p role="status" className="mt-2 text-xs text-[var(--color-muted)]">
         {saving ? "Сохранение…" : notice}
       </p>
-      {error ? (
+      {error && !editing ? (
         <p role="alert" className="mt-2 text-sm text-red-500">
           {error}
         </p>

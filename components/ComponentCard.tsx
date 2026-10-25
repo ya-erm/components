@@ -9,6 +9,7 @@ export function ComponentCard({
   hideType = false,
   variant = "default",
   onSelect,
+  selected,
   readOnly = false,
   newTab = false,
 }: {
@@ -16,6 +17,7 @@ export function ComponentCard({
   hideType?: boolean;
   variant?: "default" | "compact";
   onSelect?: () => void;
+  selected?: boolean;
   readOnly?: boolean;
   newTab?: boolean;
 }) {
@@ -47,6 +49,24 @@ export function ComponentCard({
             <NoImageIcon className="size-[50%]" />
           </div>
         )}
+        {onSelect && selected !== undefined ? (
+          <span
+            aria-hidden="true"
+            className={`absolute right-2 top-2 flex size-6 items-center justify-center rounded-full border-2 shadow-sm ${selected ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-fg)]" : "border-[var(--color-muted)] bg-[var(--color-surface)]"}`}
+          >
+            {selected ? (
+              <svg viewBox="0 0 20 20" className="size-4" fill="none">
+                <path
+                  d="m4 10 4 4 8-8"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : null}
+          </span>
+        ) : null}
       </div>
 
       <div
@@ -110,8 +130,9 @@ export function ComponentCard({
     return (
       <button
         type="button"
-        aria-label={`Выбрать ${item.data.name}`}
-        className={className}
+        aria-label={`${selected ? "Убрать" : "Выбрать"} ${item.data.name}`}
+        aria-pressed={selected}
+        className={`${className}${selected ? " ring-2 ring-[var(--color-accent)]" : ""}`}
         onClick={onSelect}
       >
         {content}

@@ -82,14 +82,14 @@ export function ProjectList({ initial }: { initial: ProjectListEntry[] }) {
       >
         {(project, handle) => (
           <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-            <div className="mb-3 flex gap-1">
-              {handle}
+            <div className="mb-3 flex items-center gap-2">
               <Link
                 href={`/projects/${encodeURIComponent(project.id)}`}
                 className="min-w-0 flex-1 rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
               >
                 <ProjectCard project={project} />
               </Link>
+              {handle}
             </div>
             <ul className="flex flex-col gap-2">
               {project.components.map((component) => (

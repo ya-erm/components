@@ -22,6 +22,7 @@ import { CSS } from "@dnd-kit/utilities";
 export function SortableList<T extends { id: string }>({
   items,
   disabled = false,
+  compact = false,
   label,
   getLabel,
   onReorder,
@@ -29,6 +30,7 @@ export function SortableList<T extends { id: string }>({
 }: {
   items: T[];
   disabled?: boolean;
+  compact?: boolean;
   label: string;
   getLabel: (item: T) => string;
   onReorder: (items: T[]) => void;
@@ -79,7 +81,10 @@ export function SortableList<T extends { id: string }>({
         items={items.map((item) => item.id)}
         strategy={verticalListSortingStrategy}
       >
-        <ul aria-label={label} className="flex flex-col gap-3">
+        <ul
+          aria-label={label}
+          className={`flex flex-col ${compact ? "gap-2" : "gap-3"}`}
+        >
           {items.map((item) => (
             <SortableRow
               key={item.id}
@@ -137,7 +142,7 @@ function SortableRow({
           aria-label={`Переместить ${label}`}
           aria-roledescription="Перетаскиваемый элемент"
           title="Перетащите или используйте пробел и стрелки"
-          className="flex size-11 shrink-0 touch-none items-center justify-center self-start rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30 cursor-grab active:cursor-grabbing"
+          className="flex size-11 shrink-0 touch-none items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30 cursor-grab active:cursor-grabbing"
         >
           <svg
             viewBox="0 0 20 20"
