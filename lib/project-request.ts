@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/session";
 import { projectSchema } from "@/lib/schema";
 import { CatalogValidationError } from "@/lib/catalog";
+import { ProjectConflictError } from "./project-mutations";
 import { saveProject } from "@/lib/components-repo";
 
 export async function handleProjectSave(request: Request, id?: string) {
@@ -27,6 +28,8 @@ export async function handleProjectSave(request: Request, id?: string) {
       return NextResponse.json({ error: "Проект не найден" }, { status: 404 });
     return NextResponse.json(project, { status: id === undefined ? 201 : 200 });
   } catch (error) {
+    if (error instanceof ProjectConflictError)
+      return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof CatalogValidationError)
       return NextResponse.json({ error: error.message }, { status: 400 });
     console.error("Ошибка сохранения проекта", error);

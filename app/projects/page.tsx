@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { readCatalog } from "@/lib/components-repo";
 import { AppHeader, BackLink } from "@/components/AppHeader";
-import { ProjectCard } from "@/components/ProjectCard";
+import { ProjectList } from "@/components/ProjectList";
 import { PlusIcon } from "@/components/ui/Field";
 
 export const dynamic = "force-dynamic";
@@ -29,70 +29,35 @@ export default async function ProjectsPage() {
         }
       />
       <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-5">
-        {catalog.projects.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">
-            Проектов пока нет.
-          </p>
-        ) : null}
-        {catalog.projects.map((project) => {
-          const components = catalog.items.flatMap((item) => {
-            const usages = (item.data.usages ?? []).filter(
-              (usage) => usage.projectId === project.id,
+        <ProjectList
+          initial={catalog.projects.map((project) => {
+            const components = catalog.items.flatMap((item) => {
+              const usages = (item.data.usages ?? []).filter(
+                (usage) => usage.projectId === project.id,
+              );
+              if (!usages.length) return [];
+              return [
+                {
+                  id: item.id,
+                  name: item.data.name,
+                  quantity: usages.reduce(
+                    (sum, usage) => sum + (usage.quantity ?? 0),
+                    0,
+                  ),
+                  unknown: usages.some((usage) => usage.quantity === undefined),
+                },
+              ];
+            });
+            const order = new Map(
+              (project.componentOrder ?? []).map((id, index) => [id, index]),
             );
-            if (!usages.length) return [];
-            return [
-              {
-                id: item.id,
-                name: item.data.name,
-                quantity: usages.reduce(
-                  (sum, usage) => sum + (usage.quantity ?? 0),
-                  0,
-                ),
-                unknown: usages.some((usage) => usage.quantity === undefined),
-              },
-            ];
-          });
-          return (
-            <section
-              key={project.id}
-              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-            >
-              <Link
-                href={`/projects/${encodeURIComponent(project.id)}`}
-                className="mb-3 block rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
-              >
-                <ProjectCard project={project} />
-              </Link>
-              <ul className="flex flex-col gap-2">
-                {components.map((component) => (
-                  <li key={component.id}>
-                    <Link
-                      href={`/components/${component.id}`}
-                      className="flex items-start justify-between gap-3 text-sm"
-                    >
-                      <span className="min-w-0 text-[var(--color-accent)]">
-                        {component.name}
-                      </span>
-                      <span className="shrink-0 tabular-nums">
-                        {component.unknown
-                          ? component.quantity
-                            ? `${component.quantity}+`
-                            : "—"
-                          : component.quantity}{" "}
-                        шт.
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-              {!components.length ? (
-                <p className="text-sm text-[var(--color-muted)]">
-                  Компоненты пока не использованы.
-                </p>
-              ) : null}
-            </section>
-          );
-        })}
+            components.sort(
+              (a, b) =>
+                (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity),
+            );
+            return { ...project, components };
+          })}
+        />
       </div>
     </>
   );

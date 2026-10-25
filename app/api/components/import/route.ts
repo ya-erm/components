@@ -1,3 +1,4 @@
+import { ProjectConflictError } from "@/lib/project-mutations";
 import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/session";
 import {
@@ -119,6 +120,8 @@ export async function POST(req: Request) {
       total: entries.length,
     });
   } catch (error) {
+    if (error instanceof ProjectConflictError)
+      return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof CatalogValidationError)
       return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;
