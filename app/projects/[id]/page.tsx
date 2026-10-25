@@ -18,6 +18,7 @@ export default async function ProjectPage({
   return (
     <ProjectDetails key={project.id} initial={project}>
       <ProjectComponents
+        ownerId={ownerId}
         initialProject={project}
         initialItems={catalog.items}
       />
