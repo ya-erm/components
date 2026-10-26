@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/Button";
 import { ChevronDownIcon, Field, Input, ProjectsIcon } from "@/components/ui/Field";
 import { CommentsEditor } from "@/components/CommentsEditor";
 import { InventorySummary } from "@/components/InventorySummary";
+import { OrderSummaryBadges } from "@/components/OrderSummaryBadges";
 import { ProjectPicker } from "@/components/ProjectPicker";
-import { StatusBadge } from "@/components/StatusBadge";
 import { StatusIcon } from "@/components/StatusIcon";
 import { StatusSelect } from "@/components/StatusSelect";
 
@@ -140,30 +140,7 @@ export function ComponentLedgerEditor({
           <StatusIcon status="in_transit" className="!size-5 text-amber-600" />
           <span role="heading" aria-level={2} className="shrink-0 text-lg font-semibold">Заказы</span>
           <span className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto whitespace-nowrap">
-            {value.purchases.map((purchase, index) => {
-              const badgeStatus = purchase.status === "delivered"
-                ? "in_stock"
-                : purchase.status === "cancelled"
-                  ? "out_of_stock"
-                  : purchase.status;
-              const label = `Заказ ${index + 1}: ${PURCHASE_LABELS[purchase.status]}, ${purchase.quantity === undefined ? "количество неизвестно" : `${purchase.quantity} шт.`}`;
-              return (
-                <StatusBadge
-                  key={purchase.id}
-                  status={badgeStatus}
-                  size="compact"
-                  className="gap-px"
-                  title={label}
-                  aria-label={label}
-                >
-                  <StatusIcon status={purchase.status} compact />
-                  <span className="tabular-nums" aria-hidden="true">{purchase.quantity ?? "—"}</span>
-                </StatusBadge>
-              );
-            })}
-            {!value.purchases.length ? (
-              <span className="text-xs text-[var(--color-muted)]">Нет заказов</span>
-            ) : null}
+            <OrderSummaryBadges purchases={value.purchases} />
           </span>
           <ChevronDownIcon className="ml-auto size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
         </summary>
