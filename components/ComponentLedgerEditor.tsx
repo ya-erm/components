@@ -465,7 +465,7 @@ export function ComponentLedgerEditor({
                       aria-label={`Уменьшить количество для использования ${index + 1}`}
                       disabled={usage.quantity === undefined || usage.quantity <= 0}
                       onClick={() => updateUsage(usage.id, { quantity: (usage.quantity ?? 0) - 1 })}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
+                      className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
                     >
                       −
                     </button>
@@ -478,7 +478,7 @@ export function ComponentLedgerEditor({
                         inputMode="numeric"
                         value={usage.quantity ?? ""}
                         placeholder="—"
-                        className="!bg-white px-1 text-center text-sm text-zinc-900"
+                        className="px-1 text-center text-sm"
                         onChange={(event) =>
                           updateUsage(usage.id, {
                             quantity:
@@ -494,7 +494,7 @@ export function ComponentLedgerEditor({
                       aria-label={`Увеличить количество для использования ${index + 1}`}
                       disabled={usage.quantity !== undefined && !Number.isSafeInteger(usage.quantity + 1)}
                       onClick={() => updateUsage(usage.id, { quantity: (usage.quantity ?? 0) + 1 })}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
+                      className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
                     >
                       +
                     </button>
