@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronLeftIcon } from "@/components/ui/Field";
 
 export function ComponentModal({
   children,
@@ -56,9 +57,10 @@ export function CloseComponentModal() {
     <button
       type="button"
       onClick={() => router.back()}
-      className="-ml-1 rounded-lg px-2 py-1 text-[var(--color-accent)] transition active:opacity-70"
+      className="-ml-1 inline-flex items-center gap-0.5 rounded-lg py-1 pr-2 pl-1 text-[var(--color-accent)] transition active:opacity-70"
     >
-      Назад
+      <ChevronLeftIcon className="size-5 shrink-0" />
+      <span className="truncate">Назад</span>
     </button>
   );
 }
