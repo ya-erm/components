@@ -312,9 +312,8 @@ export function ProjectComponents({
               className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pb-6"
             >
               <p className="py-3 text-sm text-[var(--color-muted)]">
-                Нажимайте на карточки, чтобы выбрать компоненты для «
-                {project.name}». Количество можно задать под выбранной
-                карточкой; пустое поле означает «неизвестно».
+                Выберите компоненты для «{project.name}». Количество можно
+                указать под выбранной карточкой.
               </p>
               <ComponentGrid
                 ownerId={ownerId}
