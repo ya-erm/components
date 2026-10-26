@@ -4,7 +4,7 @@ import { InventorySummary } from "@/components/InventorySummary";
 import { OrderSummaryBadges } from "@/components/OrderSummaryBadges";
 import { StatusIcon } from "@/components/StatusIcon";
 import { BASE as buttonBase } from "@/components/ui/Button";
-import { ChevronDownIcon, ExternalLinkIcon, Field, PlusIcon, ProjectsIcon, controlClass } from "@/components/ui/Field";
+import { ChevronDownIcon, ExternalLinkIcon, Field, PlusIcon, ProjectsIcon, Textarea, controlClass } from "@/components/ui/Field";
 
 const sectionClass = "flex min-h-12 w-full items-center gap-2";
 
@@ -61,6 +61,7 @@ export function CachedComponentPreview({ data }: { data: ComponentData }) {
               {tag}<span aria-hidden="true" className="text-[var(--color-muted)]">×</span>
             </span>
           ))}
+          <span aria-hidden="true" className="min-w-24 flex-1 px-1 py-0.5 text-base">{"\u00a0"}</span>
         </div>
       </Field>
 
@@ -99,18 +100,23 @@ export function CachedComponentPreview({ data }: { data: ComponentData }) {
       </div>
 
       <Field label="Заметка">
-        <PreviewValue className="min-h-24 whitespace-pre-wrap break-words">{data.note || "\u00a0"}</PreviewValue>
+        <Textarea value={data.note} placeholder="Корпус, точность, где лежит и т.п." readOnly tabIndex={-1} />
       </Field>
 
       <section className="flex flex-col gap-3" aria-label="Комментарии к компоненту">
         <h2 className="text-lg font-semibold">Комментарии к компоненту</h2>
-        {data.comments.map((comment) => (
-          <div key={comment.id} className="rounded-xl border border-[var(--color-border)] p-3">
-            <time dateTime={comment.createdAt} className="mb-2 block text-xs text-[var(--color-muted)]">{comment.createdAt.slice(0, 10)}</time>
-            <PreviewValue className="min-h-24 whitespace-pre-wrap break-words">{comment.text}</PreviewValue>
-          </div>
-        ))}
-        <div className={`${buttonBase} border border-[var(--color-border)] bg-[var(--color-surface-2)]`}>Добавить комментарий</div>
+        <div className="flex flex-col gap-2">
+          {data.comments.map((comment) => (
+            <div key={comment.id} className="rounded-xl border border-[var(--color-border)] p-3">
+              <div className="mb-2 flex items-center justify-between gap-2 text-xs text-[var(--color-muted)]">
+                <time dateTime={comment.createdAt}>{comment.createdAt.slice(0, 10)}</time>
+                <span className="p-1 text-red-500">Удалить</span>
+              </div>
+              <Textarea value={comment.text} readOnly tabIndex={-1} />
+            </div>
+          ))}
+          <div className={`${buttonBase} border border-[var(--color-border)] bg-[var(--color-surface-2)]`}>Добавить комментарий</div>
+        </div>
       </section>
 
       <div className={`${buttonBase} bg-[var(--color-surface-2)] text-[var(--color-muted)]`}>Сохранить</div>
