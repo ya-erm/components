@@ -10,15 +10,17 @@ import { StatusIcon } from "@/components/StatusIcon";
 export function InventorySummary({
   data,
   compact = false,
+  showLabels = false,
 }: {
   data: Pick<ComponentData, "inventory" | "purchases" | "usages">;
   compact?: boolean;
+  showLabels?: boolean;
 }) {
   const totals = inventoryTotals(data).filter(
     (total) => total.quantity > 0 || total.unknown,
   );
   return (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap">
+    <span className={`flex min-w-0 items-center gap-1 ${showLabels ? "flex-wrap" : "overflow-x-auto whitespace-nowrap"}`}>
       {totals.map((total) => {
         const quantity = total.unknown
           ? total.quantity > 0
@@ -37,7 +39,7 @@ export function InventorySummary({
           >
             <StatusIcon status={total.status} compact={compact} />
             <span className="tabular-nums" aria-hidden="true">
-              {quantity}
+              {showLabels ? `${STATUS_LABELS[total.status]}: ${quantity}` : quantity}
             </span>
           </StatusBadge>
         );
@@ -53,10 +55,10 @@ export function InventorySummary({
         >
           <StatusIcon status="out_of_stock" compact={compact} />
           <span className="tabular-nums" aria-hidden="true">
-            0
+            {showLabels ? "Нет в наличии: 0" : "0"}
           </span>
         </StatusBadge>
       ) : null}
-    </div>
+    </span>
   );
 }
