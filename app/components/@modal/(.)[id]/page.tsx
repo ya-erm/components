@@ -1,4 +1,4 @@
-import { ComponentPageContent } from "@/app/components/[id]/page";
+import { ComponentPageContent } from "@/components/ComponentPageContent";
 import { ComponentModal } from "@/components/ComponentModal";
 
 export default async function InterceptedComponentPage({

@@ -1,4 +1,4 @@
-import { ComponentPageContent, componentBackHref } from "@/app/components/[id]/page";
+import { ComponentPageContent, componentBackHref } from "@/components/ComponentPageContent";
 import { ComponentModal } from "@/components/ComponentModal";
 
 export default async function ProjectComponentPage({
