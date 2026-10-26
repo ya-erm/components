@@ -392,34 +392,36 @@ export function ComponentLedgerEditor({
                     aria-label={`Уменьшить количество для использования ${index + 1}`}
                     disabled={usage.quantity === undefined || usage.quantity <= 0}
                     onClick={() => updateUsage(usage.id, { quantity: (usage.quantity ?? 0) - 1 })}
-                    className="flex size-10 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
                   >
                     −
                   </button>
-                  <Input
-                    id={`usage-count-${usage.id}`}
-                    type="number"
-                    min={0}
-                    step={1}
-                    inputMode="numeric"
-                    value={usage.quantity ?? ""}
-                    placeholder="—"
-                    className="w-20 px-1 text-center text-sm"
-                    onChange={(event) =>
-                      updateUsage(usage.id, {
-                        quantity:
-                          event.target.value === ""
-                            ? undefined
-                            : Number(event.target.value),
-                      })
-                    }
-                  />
+                  <div className="w-16 shrink-0">
+                    <Input
+                      id={`usage-count-${usage.id}`}
+                      type="number"
+                      min={0}
+                      step={1}
+                      inputMode="numeric"
+                      value={usage.quantity ?? ""}
+                      placeholder="—"
+                      className="px-1 text-center text-sm"
+                      onChange={(event) =>
+                        updateUsage(usage.id, {
+                          quantity:
+                            event.target.value === ""
+                              ? undefined
+                              : Number(event.target.value),
+                        })
+                      }
+                    />
+                  </div>
                   <button
                     type="button"
                     aria-label={`Увеличить количество для использования ${index + 1}`}
                     disabled={usage.quantity !== undefined && !Number.isSafeInteger(usage.quantity + 1)}
                     onClick={() => updateUsage(usage.id, { quantity: (usage.quantity ?? 0) + 1 })}
-                    className="flex size-10 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
                   >
                     +
                   </button>
