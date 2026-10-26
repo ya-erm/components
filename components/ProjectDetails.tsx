@@ -8,6 +8,9 @@ import { ImageUploader } from "@/components/ImageUploader";
 import { ProjectDescription } from "@/components/ProjectDescription";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Field";
+import { Spinner } from "@/components/ui/states";
+
+const FORM_ID = "project-details-form";
 
 export function ProjectDetails({
   initial,
@@ -83,9 +86,23 @@ export function ProjectDetails({
 
   return (
     <>
-      <AppHeader title={saved.name} left={<BackLink href="/projects" />} />
+      <AppHeader
+        title={saved.name}
+        left={<BackLink href="/projects" />}
+        right={
+          <button
+            type="submit"
+            form={FORM_ID}
+            disabled={!dirty || saving || uploading}
+            className="inline-flex min-h-11 items-center rounded-lg px-2 font-medium text-[var(--color-accent)] disabled:opacity-40"
+          >
+            {saving ? <Spinner className="size-4" /> : "Готово"}
+          </button>
+        }
+      />
       <div className="mx-auto flex max-w-xl flex-col gap-5 px-4 py-5">
         <form
+          id={FORM_ID}
           onSubmit={submit}
           className="flex flex-col gap-5"
           aria-label="Данные проекта"
