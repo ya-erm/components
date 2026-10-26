@@ -16,21 +16,23 @@ export function ProjectDetails({
   initial,
   children,
 }: {
-  initial: Project;
-  children: ReactNode;
+  initial?: Project;
+  children?: ReactNode;
 }) {
   const router = useRouter();
-  const [saved, setSaved] = useState(initial);
-  const [name, setName] = useState(initial.name);
-  const [description, setDescription] = useState(initial.description ?? "");
-  const [images, setImages] = useState(initial.images ?? []);
-  const [editingName, setEditingName] = useState(false);
+  const [draftId] = useState(() => crypto.randomUUID());
+  const [saved, setSaved] = useState<Project | null>(initial ?? null);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [images, setImages] = useState(initial?.images ?? []);
+  const [editingName, setEditingName] = useState(!initial);
   const [editingDescription, setEditingDescription] = useState(false);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty =
+    !saved ||
     name !== saved.name ||
     description !== (saved.description ?? "") ||
     JSON.stringify(images) !== JSON.stringify(saved.images ?? []);
@@ -50,7 +52,7 @@ export function ProjectDetails({
     if (saving || uploading || !dirty) return;
     setError(null);
     const parsed = projectSchema.safeParse({
-      id: saved.id,
+      id: saved?.id ?? draftId,
       name,
       description,
       images,
@@ -60,11 +62,12 @@ export function ProjectDetails({
       return;
     }
     setSaving(true);
+    let created = false;
     try {
       const response = await fetch(
-        `/api/projects/${encodeURIComponent(saved.id)}`,
+        saved ? `/api/projects/${encodeURIComponent(saved.id)}` : "/api/projects",
         {
-          method: "PUT",
+          method: saved ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(parsed.data),
         },
@@ -72,6 +75,11 @@ export function ProjectDetails({
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error ?? "Не удалось сохранить проект");
+      if (!saved) {
+        created = true;
+        router.replace(`/projects/${encodeURIComponent(result.id)}`);
+        return;
+      }
       setSaved(result);
       reset(result);
       router.refresh();
@@ -80,14 +88,14 @@ export function ProjectDetails({
         error instanceof Error ? error.message : "Не удалось сохранить проект",
       );
     } finally {
-      setSaving(false);
+      if (!created) setSaving(false);
     }
   }
 
   return (
     <>
       <AppHeader
-        title={saved.name}
+        title={saved?.name || "Новый проект"}
         left={<BackLink href="/projects" />}
         right={
           <button
@@ -237,14 +245,24 @@ export function ProjectDetails({
                 type="button"
                 variant="secondary"
                 disabled={saving || uploading}
-                onClick={() => reset(saved)}
+                onClick={() => saved ? reset(saved) : router.push("/projects")}
               >
                 Отмена
               </Button>
             </div>
           ) : null}
         </form>
-        {children}
+        {children ?? (
+          <section aria-label="Компоненты проекта">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold">Компоненты проекта</h2>
+              <Button type="button" variant="secondary" disabled>Выбрать компоненты</Button>
+            </div>
+            <p className="text-sm text-[var(--color-muted)]">
+              Сохраните проект, чтобы выбрать компоненты.
+            </p>
+          </section>
+        )}
       </div>
     </>
   );
