@@ -2,12 +2,10 @@ import { ProjectNavigationProvider } from "@/components/ProjectNavigationProvide
 
 export default function ProjectsLayout({
   children,
-  modal,
-}: Readonly<{ children: React.ReactNode; modal: React.ReactNode }>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <ProjectNavigationProvider>
       <div data-projects-background>{children}</div>
-      {modal}
     </ProjectNavigationProvider>
   );
 }

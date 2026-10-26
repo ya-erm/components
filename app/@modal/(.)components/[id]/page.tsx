@@ -1,7 +1,7 @@
 import { ComponentPageContent, componentBackHref } from "@/components/ComponentPageContent";
 import { ComponentModal } from "@/components/ComponentModal";
 
-export default async function ProjectComponentPage({
+export default async function InterceptedComponentPage({
   params,
   searchParams,
 }: {
@@ -10,7 +10,7 @@ export default async function ProjectComponentPage({
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
   return (
-    <ComponentModal backgroundSelector="[data-projects-background]">
+    <ComponentModal>
       <ComponentPageContent id={id} backHref={componentBackHref(query.returnTo)} modal />
     </ComponentModal>
   );
