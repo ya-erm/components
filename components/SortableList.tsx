@@ -90,6 +90,7 @@ export function SortableList<T extends { id: string }>({
               key={item.id}
               id={item.id}
               label={getLabel(item)}
+              compact={compact}
               disabled={disabled || items.length < 2}
             >
               {(handle) => children(item, handle)}
@@ -104,11 +105,13 @@ export function SortableList<T extends { id: string }>({
 function SortableRow({
   id,
   label,
+  compact,
   disabled,
   children,
 }: {
   id: string;
   label: string;
+  compact: boolean;
   disabled: boolean;
   children: (handle: ReactNode) => ReactNode;
 }) {
@@ -142,7 +145,7 @@ function SortableRow({
           aria-label={`Переместить ${label}`}
           aria-roledescription="Перетаскиваемый элемент"
           title="Перетащите или используйте пробел и стрелки"
-          className="flex size-11 shrink-0 touch-none items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30 cursor-grab active:cursor-grabbing"
+          className={`flex ${compact ? "size-9" : "size-11"} shrink-0 touch-none items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30 cursor-grab active:cursor-grabbing`}
         >
           <svg
             viewBox="0 0 20 20"

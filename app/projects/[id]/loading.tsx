@@ -28,12 +28,12 @@ function ProjectPreview({ project }: { project: ProjectListEntry }) {
           <ProjectDescription text={project.description} />
         </section>
       ) : null}
-      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 sm:p-4" aria-label="Компоненты проекта">
+      <section aria-label="Компоненты проекта">
         <h2 className="mb-3 text-lg font-semibold">Компоненты проекта</h2>
         {project.components.length ? (
           <div className="flex flex-col gap-2">
             {project.components.map((component) => (
-              <div key={component.id} className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] p-1">
+              <div key={component.id} className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] py-1 pr-3 pl-2">
                 {component.image ? (
                   <span className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-[var(--color-surface-2)]">
                     <Image src={component.image} alt="" fill sizes="40px" className="object-cover" />
@@ -72,7 +72,7 @@ function ProjectSkeleton() {
         <div className={`h-4 w-full ${bar}`} />
         <div className={`h-4 w-3/4 ${bar}`} />
       </div>
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 sm:p-4">
+      <div>
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className={`h-6 w-40 ${bar}`} />
           <div className={`h-9 w-28 ${bar}`} />

@@ -210,10 +210,7 @@ export function ProjectComponents({
     );
   }
   return (
-    <section
-      className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 sm:p-4"
-      aria-label="Компоненты проекта"
-    >
+    <section aria-label="Компоненты проекта">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Компоненты проекта</h2>
         <Button
@@ -339,7 +336,7 @@ export function ProjectComponents({
             {(item, handle) => {
               const used = usedBy(item, project.id);
               return (
-                <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] p-1">
+                <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] py-1 pr-3">
                   {handle}
                   <Thumbnail item={item} />
                   <Link
