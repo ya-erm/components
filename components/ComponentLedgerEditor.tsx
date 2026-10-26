@@ -345,7 +345,7 @@ export function ComponentLedgerEditor({
                 />
                 <button
                   type="button"
-                  className="shrink-0 px-1 text-sm text-red-500"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-lg text-red-500 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
                   aria-label={`Удалить использование ${index + 1}`}
                   onClick={() =>
                     onChange({
@@ -356,7 +356,15 @@ export function ComponentLedgerEditor({
                     })
                   }
                 >
-                  Убрать
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="size-5">
+                    <path
+                      d="M4.5 6h11M8 6V4.8A1.3 1.3 0 0 1 9.3 3.5h1.4A1.3 1.3 0 0 1 12 4.8V6m2.2 0-.5 9A1.5 1.5 0 0 1 12.2 16.5H7.8A1.5 1.5 0 0 1 6.3 15l-.5-9"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
                 </button>
               </div>
               {newProject ? (

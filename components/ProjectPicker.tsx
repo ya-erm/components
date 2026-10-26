@@ -68,9 +68,15 @@ export function ProjectPicker({
         type="button"
         aria-label={selected ? `Выбрать проект, сейчас ${selected.name || "Новый проект"}` : "Выбрать проект"}
         onClick={() => setOpen(true)}
-        className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg bg-[var(--color-surface-2)] px-3 text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg bg-[var(--color-surface-2)] px-2 text-left focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
       >
-        <ProjectsIcon className="size-5 shrink-0 text-[var(--color-accent)]" />
+        {selected?.images?.[0] ? (
+          <span className="relative size-9 shrink-0 overflow-hidden rounded-md">
+            <Image src={selected.images[0]} alt="" fill sizes="36px" className="object-cover" />
+          </span>
+        ) : (
+          <ProjectsIcon className="size-5 shrink-0 text-[var(--color-accent)]" />
+        )}
         <span className={`min-w-0 flex-1 truncate text-sm font-medium ${selected ? "" : "text-[var(--color-muted)]"}`}>
           {selected ? selected.name || "Новый проект" : "Выбрать проект"}
         </span>
