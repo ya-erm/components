@@ -14,12 +14,16 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import type { ComponentDTO } from "@/lib/components-repo";
 import {
+  COMPONENT_LIST_UPDATE,
   type ComponentListPage as Page,
+  type ComponentListUpdate,
+  type ComponentSavePayload,
   readComponentList,
   reconcileComponentList,
+  saveComponentInBackground,
   saveComponentList,
 } from "@/lib/component-list-state";
-import { COMPONENT_STATUSES, STATUS_LABELS, mainImage } from "@/lib/schema";
+import { COMPONENT_STATUSES, STATUS_LABELS, mainImage, type ComponentData } from "@/lib/schema";
 import { ComponentCard, NoImageIcon } from "@/components/ComponentCard";
 import { InventorySummary } from "@/components/InventorySummary";
 import { StatusSelect } from "@/components/StatusSelect";
@@ -133,6 +137,51 @@ export function ComponentGrid({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingSaves, setPendingSaves] = useState<Set<string>>(() => new Set());
+  const [failedSave, setFailedSave] = useState<{
+    id: string;
+    message: string;
+    payload: ComponentSavePayload;
+  } | null>(null);
+  const [optimisticData, setOptimisticData] = useState<Map<string, ComponentData>>(() => new Map());
+
+  useEffect(() => {
+    if (onSelect) return;
+    const onListUpdate = (event: Event) => {
+      const update = (event as CustomEvent<ComponentListUpdate>).detail;
+      if (update.type === "saving") {
+        setFailedSave(null);
+        setPendingSaves((current) => new Set(current).add(update.id));
+        setOptimisticData((current) => new Map(current).set(update.id, update.data));
+      } else if (update.type === "saved") {
+        setOptimisticData((current) => {
+          const next = new Map(current);
+          next.delete(update.id);
+          return next;
+        });
+        setPendingSaves((current) => {
+          const next = new Set(current);
+          next.delete(update.id);
+          return next;
+        });
+        setItems((current) => current.map((item) => item.id === update.id ? update.item : item));
+      } else {
+        setOptimisticData((current) => {
+          const next = new Map(current);
+          next.delete(update.id);
+          return next;
+        });
+        setPendingSaves((current) => {
+          const next = new Set(current);
+          next.delete(update.id);
+          return next;
+        });
+        setFailedSave(update);
+      }
+    };
+    window.addEventListener(COMPONENT_LIST_UPDATE, onListUpdate);
+    return () => window.removeEventListener(COMPONENT_LIST_UPDATE, onListUpdate);
+  }, [onSelect]);
 
   const [types, setTypes] = useState<Facet[]>([]);
   const [tags, setTags] = useState<Facet[]>([]);
@@ -272,10 +321,16 @@ export function ComponentGrid({
     Boolean(onSelect),
   ]);
 
+  const visibleItems = optimisticData.size
+    ? items.map((item) => {
+        const data = optimisticData.get(item.id);
+        return data ? { ...item, data } : item;
+      })
+    : items;
   const hasMore = groupBy === "none" && items.length < total;
   const hasFilters = Boolean(query.trim() || status || type || tag);
 
-  const grouped = groupItems(items, groupBy);
+  const grouped = groupItems(visibleItems, groupBy);
   const collapsedGroups =
     groupBy === "none"
       ? EMPTY_COLLAPSED_GROUPS
@@ -449,6 +504,7 @@ export function ComponentGrid({
 
       <div className="flex items-center justify-between text-sm text-[var(--color-muted)]">
         <span>{hasFilters ? `Найдено: ${total}` : `Всего: ${total}`}</span>
+        {pendingSaves.size ? <span role="status">Сохраняем…</span> : null}
         {hasFilters ? (
           <button
             type="button"
@@ -464,6 +520,15 @@ export function ComponentGrid({
           </button>
         ) : null}
       </div>
+
+      {failedSave ? (
+        <div role="alert" className="flex items-center justify-between gap-2 rounded-xl border border-red-500/40 p-3 text-sm text-red-600 dark:text-red-400">
+          <span>Не удалось сохранить компонент: {failedSave.message}</span>
+          <Button type="button" variant="secondary" onClick={() => saveComponentInBackground(failedSave.id, failedSave.payload)}>
+            Повторить
+          </Button>
+        </div>
+      ) : null}
 
       {error ? (
         <div
@@ -488,7 +553,7 @@ export function ComponentGrid({
           </Button>
         </div>
       ) : null}
-      {items.length === 0 ? (
+      {visibleItems.length === 0 ? (
         loading ? (
           <CenterState icon={<Spinner />} title="Загрузка…" />
         ) : hasFilters ? (
@@ -507,7 +572,7 @@ export function ComponentGrid({
       ) : groupBy === "none" ? (
         <>
           <ComponentList
-            items={items}
+            items={visibleItems}
             viewMode={viewMode}
             onSelect={onSelect}
             selection={selection}

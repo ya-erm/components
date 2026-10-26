@@ -1,4 +1,48 @@
 import type { ComponentDTO } from "@/lib/components-repo";
+import type { ComponentData, Logistics } from "@/lib/schema";
+
+export const COMPONENT_LIST_UPDATE = "component-list-update";
+
+export type ComponentSavePayload = {
+  data: ComponentData;
+  logistics?: Logistics;
+};
+
+export type ComponentListUpdate =
+  | { type: "saving"; id: string; data: ComponentData }
+  | { type: "saved"; id: string; item: ComponentDTO }
+  | { type: "failed"; id: string; message: string; payload: ComponentSavePayload };
+
+function emitListUpdate(detail: ComponentListUpdate) {
+  window.dispatchEvent(new CustomEvent(COMPONENT_LIST_UPDATE, { detail }));
+}
+
+export function saveComponentInBackground(id: string, payload: ComponentSavePayload) {
+  emitListUpdate({ type: "saving", id, data: payload.data });
+  void (async () => {
+    try {
+      const response = await fetch(`/api/components/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error ?? "Не удалось сохранить компонент");
+      }
+      const item: ComponentDTO = await response.json();
+      updateSavedComponent(item);
+      emitListUpdate({ type: "saved", id, item });
+    } catch (error) {
+      emitListUpdate({
+        type: "failed",
+        id,
+        message: error instanceof Error ? error.message : "Сетевая ошибка при сохранении",
+        payload,
+      });
+    }
+  })();
+}
 
 export type ComponentListPage = {
   items: ComponentDTO[];
@@ -46,7 +90,7 @@ export function componentReturnTarget(componentPath: string, fallback: string) {
 
 export function updateSavedComponent(item: ComponentDTO) {
   const saved = savedList();
-  if (!saved || saved.componentPath !== `/components/${item.id}`) return;
+  if (!saved || !saved.result.items.some((value) => value.id === item.id)) return;
   saveComponentList({
     ...saved,
     result: {

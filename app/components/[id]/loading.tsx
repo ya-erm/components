@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AppHeader, BackLink } from "@/components/AppHeader";
 import { controlClass } from "@/components/ui/Field";
 import { BASE as buttonBase } from "@/components/ui/Button";
+import { CloseComponentModal } from "@/components/ComponentModal";
 
 // Скелетон повторяет разметку ComponentForm 1:1 (те же классы полей и
 // кнопок), чтобы при появлении реальных данных не было layout shift —
@@ -61,12 +62,12 @@ function FieldSkeleton({ label, hint, children }: { label: string; hint?: string
   );
 }
 
-export default function Loading() {
+export function ComponentLoading({ modal = false }: { modal?: boolean }) {
   return (
     <>
       <AppHeader
         title={<TitleBar />}
-        left={<BackLink href="/components" />}
+        left={modal ? <CloseComponentModal /> : <BackLink href="/components" />}
         right={<LabelBar className="h-4 w-12" />}
       />
 
@@ -134,4 +135,8 @@ export default function Loading() {
       </div>
     </>
   );
+}
+
+export default function Loading() {
+  return <ComponentLoading />;
 }

@@ -10,10 +10,14 @@ export default async function ComponentPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
+  return <ComponentPageContent id={id} />;
+}
+
+export async function ComponentPageContent({ id, modal = false }: { id: string; modal?: boolean }) {
   const ownerId = await currentUserId();
   if (!ownerId) redirect("/login");
 
-  const { id } = await params;
   const { items, orders, shipments, projects } = await readCatalog(ownerId);
   const item = items.find((value) => value.id === id);
   if (!item) notFound();
@@ -25,6 +29,7 @@ export default async function ComponentPage({
       initialLogistics={{ orders, shipments, projects }}
       title={item.data.name || "Компонент"}
       backHref="/components"
+      modal={modal}
     />
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   COMPONENT_TYPES,
@@ -13,6 +13,7 @@ import {
 import { ImageUploader } from "@/components/ImageUploader";
 import { TagInput } from "@/components/TagInput";
 import { AppHeader, BackLink } from "@/components/AppHeader";
+import { CloseComponentModal } from "@/components/ComponentModal";
 import { DeleteComponentButton } from "@/components/DeleteComponentButton";
 import { Button } from "@/components/ui/Button";
 import {
@@ -28,7 +29,7 @@ import {
   logisticsPatch,
 } from "@/components/ComponentLedgerEditor";
 import { Spinner } from "@/components/ui/states";
-import { componentReturnTarget, updateSavedComponent } from "@/lib/component-list-state";
+import { componentReturnTarget, saveComponentInBackground, updateSavedComponent } from "@/lib/component-list-state";
 
 const FORM_ID = "component-form";
 
@@ -44,6 +45,7 @@ type Props = {
   }) => void | Promise<void>;
   onCancelDraft?: () => void;
   onDraftChange?: (value: ComponentFormDraft) => void;
+  modal?: boolean;
 };
 
 type FormValues = {
@@ -110,6 +112,7 @@ export function ComponentForm({
   onSaveDraft,
   onCancelDraft,
   onDraftChange,
+  modal = false,
 }: Props) {
   const router = useRouter();
   const isEdit = Boolean(id);
@@ -133,6 +136,7 @@ export function ComponentForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const saveStarted = useRef(false);
 
   const initialSnapshot = useMemo(
     () =>
@@ -212,7 +216,7 @@ export function ComponentForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if ((!hasChanges && !onSaveDraft) || saving) return;
+    if ((!hasChanges && !onSaveDraft) || saving || saveStarted.current) return;
     setErrors({});
     setFormError(null);
 
@@ -231,6 +235,13 @@ export function ComponentForm({
       setFormError(
         parsed.error.issues.map((issue) => issue.message).join(". "),
       );
+      return;
+    }
+
+    if (modal && id && !onSaveDraft) {
+      saveStarted.current = true;
+      saveComponentInBackground(id, parsed.data);
+      router.back();
       return;
     }
 
@@ -282,7 +293,7 @@ export function ComponentForm({
               ‹ К импорту
             </button>
           ) : (
-            <BackLink href={returnTarget.href} scroll={returnTarget.scroll} />
+            modal ? <CloseComponentModal /> : <BackLink href={returnTarget.href} scroll={returnTarget.scroll} />
           )
         }
         right={
