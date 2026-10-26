@@ -123,17 +123,20 @@ export function ProjectDetails({
                   autoFocus
                   required
                   maxLength={200}
+                  placeholder="Название проекта"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   className="text-2xl font-semibold"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setEditingName(false)}
-                >
-                  Готово
-                </Button>
+                {saved ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setEditingName(false)}
+                  >
+                    Готово
+                  </Button>
+                ) : null}
               </div>
             ) : (
               <h1 className="min-w-0 text-2xl font-semibold">
