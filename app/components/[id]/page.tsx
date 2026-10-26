@@ -7,14 +7,23 @@ export const dynamic = "force-dynamic";
 
 export default async function ComponentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string | string[] }>;
 }) {
-  const { id } = await params;
-  return <ComponentPageContent id={id} />;
+  const [{ id }, query] = await Promise.all([params, searchParams]);
+  return <ComponentPageContent id={id} backHref={componentBackHref(query.returnTo)} />;
 }
 
-export async function ComponentPageContent({ id, modal = false }: { id: string; modal?: boolean }) {
+export function componentBackHref(value?: string | string[]) {
+  const href = Array.isArray(value) ? value[0] : value;
+  return href && /^\/projects(?:\/[^/?#]+)?$/.test(href) && !href.includes("..")
+    ? href
+    : "/components";
+}
+
+export async function ComponentPageContent({ id, modal = false, backHref = "/components" }: { id: string; modal?: boolean; backHref?: string }) {
   const ownerId = await currentUserId();
   if (!ownerId) redirect("/login");
 
@@ -28,7 +37,7 @@ export async function ComponentPageContent({ id, modal = false }: { id: string; 
       initial={item.data}
       initialLogistics={{ orders, shipments, projects }}
       title={item.data.name || "Компонент"}
-      backHref="/components"
+      backHref={backHref}
       modal={modal}
     />
   );

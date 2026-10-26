@@ -3,12 +3,18 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
-export function ComponentModal({ children }: { children: ReactNode }) {
+export function ComponentModal({
+  children,
+  backgroundSelector = "[data-components-background]",
+}: {
+  children: ReactNode;
+  backgroundSelector?: string;
+}) {
   const router = useRouter();
   const dialog = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const background = document.querySelector<HTMLElement>("[data-components-background]");
+    const background = document.querySelector<HTMLElement>(backgroundSelector);
     const previousInert = background?.inert ?? false;
     const previousOverflow = document.body.style.overflow;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -20,7 +26,7 @@ export function ComponentModal({ children }: { children: ReactNode }) {
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
-  }, []);
+  }, [backgroundSelector]);
 
   return (
     <div

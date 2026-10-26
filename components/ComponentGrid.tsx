@@ -165,6 +165,9 @@ export function ComponentGrid({
           return next;
         });
         setItems((current) => current.map((item) => item.id === update.id ? update.item : item));
+      } else if (update.type === "deleted") {
+        setItems((current) => current.filter((item) => item.id !== update.id));
+        setTotal((current) => Math.max(0, current - 1));
       } else {
         setOptimisticData((current) => {
           const next = new Map(current);

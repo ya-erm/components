@@ -116,7 +116,9 @@ export function ComponentForm({
 }: Props) {
   const router = useRouter();
   const isEdit = Boolean(id);
-  const returnTarget = componentReturnTarget(`/components/${id}`, backHref);
+  const returnTarget = backHref.startsWith("/projects")
+    ? { href: backHref, scroll: true }
+    : componentReturnTarget(`/components/${id}`, backHref);
 
   const [name, setName] = useState(initial?.name ?? "");
   const [images, setImages] = useState<string[]>(initial?.images ?? []);
@@ -454,7 +456,7 @@ export function ComponentForm({
 
         {isEdit && id ? (
           <div className="mt-5">
-            <DeleteComponentButton id={id} />
+            <DeleteComponentButton id={id} backHref={backHref} modal={modal} />
           </div>
         ) : null}
       </div>

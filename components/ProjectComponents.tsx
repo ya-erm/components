@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { ComponentDTO } from "@/lib/components-repo";
 import { type Project } from "@/lib/schema";
 import { getProjectComponentsVersion } from "@/lib/project-components";
+import { COMPONENT_LIST_UPDATE, saveComponentInBackground, type ComponentListUpdate, type ComponentSavePayload } from "@/lib/component-list-state";
 import { SortableList } from "@/components/SortableList";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
@@ -58,7 +59,20 @@ export function ProjectComponents({
   const busy = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
-  const linked = orderedItems(items, project);
+  const [componentOverrides, setComponentOverrides] = useState<Map<string, ComponentDTO["data"]>>(() => new Map());
+  const [pendingComponents, setPendingComponents] = useState<Set<string>>(() => new Set());
+  const [failedComponentSave, setFailedComponentSave] = useState<{
+    id: string;
+    message: string;
+    payload: ComponentSavePayload;
+  } | null>(null);
+  const visibleItems = componentOverrides.size
+    ? items.map((item) => {
+        const data = componentOverrides.get(item.id);
+        return data ? { ...item, data } : item;
+      })
+    : items;
+  const linked = orderedItems(visibleItems, project);
   const selectionButton = useRef<HTMLButtonElement>(null);
   // Keep an open selection draft intact. Its version will detect concurrent usage edits.
   useEffect(() => {
@@ -68,7 +82,52 @@ export function ProjectComponents({
     }
   }, [initialProject, initialItems]);
 
+  useEffect(() => {
+    const onComponentUpdate = (event: Event) => {
+      const update = (event as CustomEvent<ComponentListUpdate>).detail;
+      if (update.type === "saving") {
+        setFailedComponentSave(null);
+        setPendingComponents((current) => new Set(current).add(update.id));
+        setComponentOverrides((current) => new Map(current).set(update.id, update.data));
+      } else if (update.type === "saved") {
+        setItems((current) => current.map((item) => item.id === update.id ? update.item : item));
+        setPendingComponents((current) => {
+          const next = new Set(current);
+          next.delete(update.id);
+          return next;
+        });
+        setComponentOverrides((current) => {
+          const next = new Map(current);
+          next.delete(update.id);
+          return next;
+        });
+      } else if (update.type === "deleted") {
+        setItems((current) => current.filter((item) => item.id !== update.id));
+        setComponentOverrides((current) => {
+          const next = new Map(current);
+          next.delete(update.id);
+          return next;
+        });
+      } else {
+        setPendingComponents((current) => {
+          const next = new Set(current);
+          next.delete(update.id);
+          return next;
+        });
+        setComponentOverrides((current) => {
+          const next = new Map(current);
+          next.delete(update.id);
+          return next;
+        });
+        setFailedComponentSave(update);
+      }
+    };
+    window.addEventListener(COMPONENT_LIST_UPDATE, onComponentUpdate);
+    return () => window.removeEventListener(COMPONENT_LIST_UPDATE, onComponentUpdate);
+  }, []);
+
   function openPicker() {
+    if (pendingComponents.size) return;
     setSelection(
       linked.map((item) => {
         const used = usedBy(item, project.id);
@@ -217,7 +276,7 @@ export function ProjectComponents({
           ref={selectionButton}
           type="button"
           variant="secondary"
-          disabled={saving || editing}
+          disabled={saving || editing || pendingComponents.size > 0}
           onClick={openPicker}
         >
           Выбрать компоненты
@@ -328,7 +387,7 @@ export function ProjectComponents({
           <SortableList
             items={linked}
             compact
-            disabled={saving}
+            disabled={saving || pendingComponents.size > 0}
             label="Используемые компоненты"
             getLabel={(item) => item.data.name}
             onReorder={reorder}
@@ -340,7 +399,7 @@ export function ProjectComponents({
                   {handle}
                   <Thumbnail item={item} />
                   <Link
-                    href={`/components/${encodeURIComponent(item.id)}`}
+                    href={`/components/${encodeURIComponent(item.id)}?returnTo=${encodeURIComponent(`/projects/${encodeURIComponent(project.id)}`)}`}
                     className="min-w-0 flex-1 break-words text-sm text-[var(--color-accent)]"
                   >
                     {item.data.name}
@@ -366,8 +425,14 @@ export function ProjectComponents({
         </>
       )}
       <p role="status" className="mt-2 text-xs text-[var(--color-muted)]">
-        {saving ? "Сохранение…" : notice}
+        {saving ? "Сохранение…" : pendingComponents.size ? "Сохраняем компонент…" : notice}
       </p>
+      {failedComponentSave ? (
+        <div role="alert" className="mt-2 flex items-center justify-between gap-2 text-sm text-red-500">
+          <span>Не удалось сохранить компонент: {failedComponentSave.message}</span>
+          <button type="button" className="shrink-0 text-[var(--color-accent)]" onClick={() => saveComponentInBackground(failedComponentSave.id, failedComponentSave.payload)}>Повторить</button>
+        </div>
+      ) : null}
       {error && !editing ? (
         <p role="alert" className="mt-2 text-sm text-red-500">
           {error}

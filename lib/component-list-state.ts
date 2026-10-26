@@ -11,10 +11,15 @@ export type ComponentSavePayload = {
 export type ComponentListUpdate =
   | { type: "saving"; id: string; data: ComponentData }
   | { type: "saved"; id: string; item: ComponentDTO }
+  | { type: "deleted"; id: string }
   | { type: "failed"; id: string; message: string; payload: ComponentSavePayload };
 
 function emitListUpdate(detail: ComponentListUpdate) {
   window.dispatchEvent(new CustomEvent(COMPONENT_LIST_UPDATE, { detail }));
+}
+
+export function notifyComponentDeleted(id: string) {
+  emitListUpdate({ type: "deleted", id });
 }
 
 export function saveComponentInBackground(id: string, payload: ComponentSavePayload) {
