@@ -1,8 +1,16 @@
-import type { ReactNode } from "react";
+"use client";
+
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { AppHeader, BackLink } from "@/components/AppHeader";
+import { InventorySummary } from "@/components/InventorySummary";
 import { controlClass } from "@/components/ui/Field";
 import { BASE as buttonBase } from "@/components/ui/Button";
 import { CloseComponentModal } from "@/components/ComponentModal";
+import { readComponentPreview } from "@/lib/component-list-state";
+
+const noUpdates = () => () => {};
 
 // Скелетон повторяет разметку ComponentForm 1:1 (те же классы полей и
 // кнопок), чтобы при появлении реальных данных не было layout shift —
@@ -63,43 +71,61 @@ function FieldSkeleton({ label, hint, children }: { label: string; hint?: string
 }
 
 export function ComponentLoading({ modal = false }: { modal?: boolean }) {
+  const pathname = usePathname();
+  const preview = useSyncExternalStore(
+    noUpdates,
+    () => readComponentPreview(pathname),
+    () => undefined,
+  );
   return (
     <>
       <AppHeader
-        title={<TitleBar />}
+        title={preview?.data.name || <TitleBar />}
         left={modal ? <CloseComponentModal /> : <BackLink href="/components" />}
         right={<LabelBar className="h-4 w-12" />}
       />
 
       <div className="mx-auto max-w-xl px-4 py-5" role="status" aria-label="Загрузка компонента">
-        <div aria-hidden="true" className="flex flex-col gap-5">
-          <FieldSkeleton label="w-20">
-            <ControlBar />
-          </FieldSkeleton>
+        <div className="flex flex-col gap-5">
+          {preview ? (
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-[var(--color-muted)]">Название</p>
+              <div className={`${controlClass} truncate`} aria-label={`Название: ${preview.data.name}`}>
+                {preview.data.name}
+              </div>
+            </div>
+          ) : (
+            <FieldSkeleton label="w-20"><ControlBar /></FieldSkeleton>
+          )}
 
           <div>
-            <LabelRow className="w-24" />
+            {preview ? (
+              <p className="mb-1.5 text-sm font-medium text-[var(--color-muted)]">Фотографии: {preview.data.images.length} шт</p>
+            ) : <LabelRow className="w-24" />}
             <div className="h-32 overflow-x-auto rounded-xl sm:h-36">
               <ul className="flex h-full min-w-0 gap-2 pb-1">
-                {[0, 1, 2].map((i) => (
-                  <li
-                    key={i}
-                    className="relative aspect-square h-full shrink-0 animate-pulse overflow-hidden rounded-xl border bg-[var(--color-surface-2)]"
-                    style={noBorder}
-                  />
+                {preview ? preview.data.images.map((src, index) => (
+                  <li key={`${src}-${index}`} className="relative aspect-square h-full shrink-0 overflow-hidden rounded-xl bg-[var(--color-surface-2)]">
+                    <Image src={src} alt={`${preview.data.name}, фото ${index + 1}`} fill sizes="144px" className="object-cover" />
+                  </li>
+                )) : [0, 1, 2].map((i) => (
+                  <li key={i} className="relative aspect-square h-full shrink-0 animate-pulse overflow-hidden rounded-xl border bg-[var(--color-surface-2)]" style={noBorder} />
                 ))}
               </ul>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FieldSkeleton label="w-10" hint="Выберите или введите свой">
-              <ControlBar />
-            </FieldSkeleton>
-            <FieldSkeleton label="w-14">
-              <ControlBar />
-            </FieldSkeleton>
-          </div>
+          {preview ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {preview.data.type ? <span className="rounded-lg bg-[var(--color-surface-2)] px-2 py-1">{preview.data.type}</span> : null}
+              <InventorySummary data={preview.data} showLabels />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <FieldSkeleton label="w-10" hint="Выберите или введите свой"><ControlBar /></FieldSkeleton>
+              <FieldSkeleton label="w-14"><ControlBar /></FieldSkeleton>
+            </div>
+          )}
 
           <FieldSkeleton label="w-12" hint="Enter или запятая — добавить тег">
             <ControlBar />

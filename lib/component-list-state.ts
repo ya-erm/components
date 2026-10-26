@@ -86,6 +86,13 @@ export function readComponentList(ownerId: string, href: string) {
   return saved?.ownerId === ownerId && saved.href === href ? saved : undefined;
 }
 
+export function readComponentPreview(componentPath: string) {
+  const saved = savedList();
+  return saved?.componentPath === componentPath
+    ? saved.result.items.find((item) => `/components/${encodeURIComponent(item.id)}` === componentPath)
+    : undefined;
+}
+
 export function componentReturnTarget(componentPath: string, fallback: string) {
   const saved = savedList();
   return saved?.componentPath === componentPath

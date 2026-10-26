@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { AppHeader, BackLink } from "@/components/AppHeader";
+import { AppHeader } from "@/components/AppHeader";
+import { ProjectsBackLink } from "@/components/ProjectsNavigation";
 import { PlusIcon } from "@/components/ui/Field";
 
 export default function ProjectsLoading() {
@@ -7,7 +8,7 @@ export default function ProjectsLoading() {
     <>
       <AppHeader
         title="Проекты"
-        left={<BackLink href="/components" prefetch />}
+        left={<ProjectsBackLink />}
         right={
           <Link
             href="/projects/new"

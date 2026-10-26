@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { readCatalog } from "@/lib/components-repo";
 import { orderProjectComponents } from "@/lib/project-components";
-import { AppHeader, BackLink } from "@/components/AppHeader";
+import { AppHeader } from "@/components/AppHeader";
+import { ProjectsBackLink } from "@/components/ProjectsNavigation";
 import { ProjectList, type ProjectListEntry } from "@/components/ProjectList";
 import { PlusIcon } from "@/components/ui/Field";
 
@@ -50,7 +51,7 @@ export default async function ProjectsPage() {
     <>
       <AppHeader
         title="Проекты"
-        left={<BackLink href="/components" prefetch />}
+        left={<ProjectsBackLink />}
         right={
           <Link
             href="/projects/new"

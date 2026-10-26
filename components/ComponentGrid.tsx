@@ -382,7 +382,7 @@ export function ComponentGrid({
       href,
       componentPath: link.pathname,
       scrollY: window.scrollY,
-      result: { items, total, page, pageSize: initial.pageSize },
+      result: { items: visibleItems, total, page, pageSize: initial.pageSize },
       viewMode,
       filtersOpen,
       collapsedGroups: {
@@ -608,7 +608,7 @@ export function ComponentGrid({
               selection={selection}
             />
           ))}
-          {loading ? (
+          {loading && !restored ? (
             <CenterState icon={<Spinner />} title="Загрузка…" />
           ) : null}
         </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/AppHeader";
-import { GearIcon, PlusIcon, ProjectsIcon } from "@/components/ui/Field";
+import { GearIcon, PlusIcon } from "@/components/ui/Field";
+import { ProjectsLink } from "@/components/ProjectsNavigation";
 
 const bar = "rounded bg-[var(--color-surface-2)]";
 
@@ -15,10 +16,7 @@ export default function ComponentsLoading() {
               <GearIcon className="size-5 shrink-0" />
               <span className="hidden sm:inline">Настройки</span>
             </Link>
-            <Link href="/projects" aria-label="Проекты" className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-[var(--color-accent)]">
-              <ProjectsIcon className="size-5 shrink-0" />
-              <span className="hidden sm:inline">Проекты</span>
-            </Link>
+            <ProjectsLink />
           </div>
         }
         right={
