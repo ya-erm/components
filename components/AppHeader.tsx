@@ -45,7 +45,7 @@ export function AppHeader({
   }, []);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-bg)]/85 pt-[env(safe-area-inset-top)] backdrop-blur before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:-z-10 before:h-24 before:bg-[linear-gradient(180deg,var(--color-bg),transparent)] before:content-['']">
+    <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-[var(--color-bg)] pt-[env(safe-area-inset-top)]">
       <div
         ref={containerRef}
         className="mx-auto grid h-14 max-w-5xl grid-cols-[var(--header-side-width,5rem)_minmax(0,1fr)_var(--header-side-width,5rem)] items-center gap-[5px] px-2 sm:px-4"
