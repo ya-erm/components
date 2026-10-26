@@ -9,13 +9,14 @@ export function ComponentModal({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const background = document.querySelector<HTMLElement>("[data-components-background]");
+    const previousInert = background?.inert ?? false;
     const previousOverflow = document.body.style.overflow;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (background) background.inert = true;
     document.body.style.overflow = "hidden";
     dialog.current?.focus();
     return () => {
-      if (background) background.inert = false;
+      if (background) background.inert = previousInert;
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
