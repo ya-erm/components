@@ -69,9 +69,6 @@ export function CommentsEditor({
       >
         Добавить комментарий
       </Button>
-      <p className="text-xs text-[var(--color-muted)]">
-        Комментарии сохраняются вместе с формой по кнопке «Готово».
-      </p>
     </div>
   );
 }

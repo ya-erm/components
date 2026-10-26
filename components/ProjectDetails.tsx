@@ -8,26 +8,31 @@ import { ImageUploader } from "@/components/ImageUploader";
 import { ProjectDescription } from "@/components/ProjectDescription";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Field";
+import { Spinner } from "@/components/ui/states";
+
+const FORM_ID = "project-details-form";
 
 export function ProjectDetails({
   initial,
   children,
 }: {
-  initial: Project;
-  children: ReactNode;
+  initial?: Project;
+  children?: ReactNode;
 }) {
   const router = useRouter();
-  const [saved, setSaved] = useState(initial);
-  const [name, setName] = useState(initial.name);
-  const [description, setDescription] = useState(initial.description ?? "");
-  const [images, setImages] = useState(initial.images ?? []);
-  const [editingName, setEditingName] = useState(false);
+  const [draftId] = useState(() => crypto.randomUUID());
+  const [saved, setSaved] = useState<Project | null>(initial ?? null);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [images, setImages] = useState(initial?.images ?? []);
+  const [editingName, setEditingName] = useState(!initial);
   const [editingDescription, setEditingDescription] = useState(false);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty =
+    !saved ||
     name !== saved.name ||
     description !== (saved.description ?? "") ||
     JSON.stringify(images) !== JSON.stringify(saved.images ?? []);
@@ -47,7 +52,7 @@ export function ProjectDetails({
     if (saving || uploading || !dirty) return;
     setError(null);
     const parsed = projectSchema.safeParse({
-      id: saved.id,
+      id: saved?.id ?? draftId,
       name,
       description,
       images,
@@ -57,11 +62,12 @@ export function ProjectDetails({
       return;
     }
     setSaving(true);
+    let created = false;
     try {
       const response = await fetch(
-        `/api/projects/${encodeURIComponent(saved.id)}`,
+        saved ? `/api/projects/${encodeURIComponent(saved.id)}` : "/api/projects",
         {
-          method: "PUT",
+          method: saved ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(parsed.data),
         },
@@ -69,6 +75,11 @@ export function ProjectDetails({
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error ?? "Не удалось сохранить проект");
+      if (!saved) {
+        created = true;
+        router.replace(`/projects/${encodeURIComponent(result.id)}`);
+        return;
+      }
       setSaved(result);
       reset(result);
       router.refresh();
@@ -77,15 +88,29 @@ export function ProjectDetails({
         error instanceof Error ? error.message : "Не удалось сохранить проект",
       );
     } finally {
-      setSaving(false);
+      if (!created) setSaving(false);
     }
   }
 
   return (
     <>
-      <AppHeader title={saved.name} left={<BackLink href="/projects" />} />
+      <AppHeader
+        title={saved?.name || "Новый проект"}
+        left={<BackLink href="/projects" />}
+        right={
+          <button
+            type="submit"
+            form={FORM_ID}
+            disabled={!dirty || saving || uploading}
+            className="inline-flex min-h-11 items-center rounded-lg px-2 font-medium text-[var(--color-accent)] disabled:opacity-40"
+          >
+            {saving ? <Spinner className="size-4" /> : "Готово"}
+          </button>
+        }
+      />
       <div className="mx-auto flex max-w-xl flex-col gap-5 px-4 py-5">
         <form
+          id={FORM_ID}
           onSubmit={submit}
           className="flex flex-col gap-5"
           aria-label="Данные проекта"
@@ -98,17 +123,20 @@ export function ProjectDetails({
                   autoFocus
                   required
                   maxLength={200}
+                  placeholder="Название проекта"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   className="text-2xl font-semibold"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setEditingName(false)}
-                >
-                  Готово
-                </Button>
+                {saved ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setEditingName(false)}
+                  >
+                    Готово
+                  </Button>
+                ) : null}
               </div>
             ) : (
               <h1 className="min-w-0 text-2xl font-semibold">
@@ -220,14 +248,24 @@ export function ProjectDetails({
                 type="button"
                 variant="secondary"
                 disabled={saving || uploading}
-                onClick={() => reset(saved)}
+                onClick={() => saved ? reset(saved) : router.push("/projects")}
               >
                 Отмена
               </Button>
             </div>
           ) : null}
         </form>
-        {children}
+        {children ?? (
+          <section aria-label="Компоненты проекта">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold">Компоненты проекта</h2>
+              <Button type="button" variant="secondary" disabled>Выбрать компоненты</Button>
+            </div>
+            <p className="text-sm text-[var(--color-muted)]">
+              Сохраните проект, чтобы выбрать компоненты.
+            </p>
+          </section>
+        )}
       </div>
     </>
   );
