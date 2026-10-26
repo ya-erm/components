@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   type ComponentData,
   type Logistics,
@@ -317,12 +316,7 @@ export function ComponentLedgerEditor({
         </Button>
       </section>
       <section className="flex flex-col gap-3" aria-label="Использование">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Использование</h2>
-          <Link href="/projects" className="text-sm text-[var(--color-accent)]">
-            Все проекты ↗
-          </Link>
-        </div>
+        <h2 className="text-lg font-semibold">Использование</h2>
         {value.usages.map((usage, index) => {
           const project = logistics.projects?.find(
             (project) => project.id === usage.projectId,
@@ -335,27 +329,7 @@ export function ComponentLedgerEditor({
               key={usage.id}
               className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] p-3"
             >
-              <div className="flex justify-between gap-2">
-                <h3 className="min-w-0 truncate text-sm font-semibold">
-                  {project?.name || "Использование"}
-                </h3>
-                <button
-                  type="button"
-                  className="text-sm text-red-500"
-                  aria-label={`Удалить использование ${index + 1}`}
-                  onClick={() =>
-                    onChange({
-                      ...value,
-                      usages: value.usages.filter(
-                        (entry) => entry.id !== usage.id,
-                      ),
-                    })
-                  }
-                >
-                  Убрать
-                </button>
-              </div>
-              <Field label="Проект">
+              <div className="flex items-center gap-2">
                 <ProjectPicker
                   projects={logistics.projects ?? []}
                   value={usage.projectId}
@@ -369,15 +343,22 @@ export function ComponentLedgerEditor({
                     updateUsage(usage.id, { projectId: project.id });
                   }}
                 />
-              </Field>
-              {project && !newProject ? (
-                <Link
-                  href={`/projects/${encodeURIComponent(project.id)}`}
-                  className="self-start text-sm text-[var(--color-accent)]"
+                <button
+                  type="button"
+                  className="shrink-0 px-1 text-sm text-red-500"
+                  aria-label={`Удалить использование ${index + 1}`}
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      usages: value.usages.filter(
+                        (entry) => entry.id !== usage.id,
+                      ),
+                    })
+                  }
                 >
-                  Открыть проект ↗
-                </Link>
-              ) : null}
+                  Убрать
+                </button>
+              </div>
               {newProject ? (
                 <Field
                   label="Название проекта"
@@ -401,28 +382,49 @@ export function ComponentLedgerEditor({
                   />
                 </Field>
               ) : null}
-              <Field
-                label="Использовано, шт."
-                htmlFor={`usage-count-${usage.id}`}
-              >
-                <Input
-                  id={`usage-count-${usage.id}`}
-                  type="number"
-                  min={0}
-                  step={1}
-                  inputMode="numeric"
-                  value={usage.quantity ?? ""}
-                  placeholder="Неизвестно"
-                  onChange={(event) =>
-                    updateUsage(usage.id, {
-                      quantity:
-                        event.target.value === ""
-                          ? undefined
-                          : Number(event.target.value),
-                    })
-                  }
-                />
-              </Field>
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor={`usage-count-${usage.id}`} className="text-sm text-[var(--color-muted)]">
+                  Количество
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-label={`Уменьшить количество для использования ${index + 1}`}
+                    disabled={usage.quantity === undefined || usage.quantity <= 0}
+                    onClick={() => updateUsage(usage.id, { quantity: (usage.quantity ?? 0) - 1 })}
+                    className="flex size-10 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <Input
+                    id={`usage-count-${usage.id}`}
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    value={usage.quantity ?? ""}
+                    placeholder="—"
+                    className="w-20 px-1 text-center text-sm"
+                    onChange={(event) =>
+                      updateUsage(usage.id, {
+                        quantity:
+                          event.target.value === ""
+                            ? undefined
+                            : Number(event.target.value),
+                      })
+                    }
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Увеличить количество для использования ${index + 1}`}
+                    disabled={usage.quantity !== undefined && !Number.isSafeInteger(usage.quantity + 1)}
+                    onClick={() => updateUsage(usage.id, { quantity: (usage.quantity ?? 0) + 1 })}
+                    className="flex size-10 items-center justify-center rounded-lg border border-[var(--color-border)] text-xl disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
           );
         })}
