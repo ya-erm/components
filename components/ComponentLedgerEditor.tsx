@@ -20,7 +20,7 @@ import { StatusSelect } from "@/components/StatusSelect";
 
 type Ledger = { purchases: Purchase[]; usages: Usage[] };
 const sectionSummaryClass =
-  "flex min-h-12 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden";
+  "flex min-h-12 w-full cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden";
 
 function projectCountText(count: number) {
   const form = new Intl.PluralRules("ru").select(count);
@@ -117,13 +117,13 @@ export function ComponentLedgerEditor({
         <summary className={sectionSummaryClass}>
           <StatusIcon status="in_stock" className="!size-5 text-emerald-600" />
           <span role="heading" aria-level={2} className="shrink-0 text-lg font-semibold">Остаток</span>
-          <span className="flex min-w-0 flex-1 justify-end group-open:hidden">
+          <span className="flex min-w-0 flex-1">
             <InventorySummary data={inventoryData} compact />
           </span>
           {overdrawn ? (
             <span aria-label="Использовано больше, чем доставлено" className="text-sm font-bold text-red-500">!</span>
           ) : null}
-          <ChevronDownIcon className="size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
+          <ChevronDownIcon className="ml-auto size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
         </summary>
         <div className="mt-3 flex flex-col gap-2">
           <InventorySummary data={inventoryData} showLabels />
@@ -139,7 +139,7 @@ export function ComponentLedgerEditor({
         <summary className={sectionSummaryClass}>
           <StatusIcon status="in_transit" className="!size-5 text-amber-600" />
           <span role="heading" aria-level={2} className="shrink-0 text-lg font-semibold">Заказы</span>
-          <span className="flex min-w-0 flex-1 justify-end gap-0.5 overflow-x-auto group-open:hidden">
+          <span className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto whitespace-nowrap">
             {value.purchases.map((purchase, index) => {
               const badgeStatus = purchase.status === "delivered"
                 ? "in_stock"
@@ -165,7 +165,7 @@ export function ComponentLedgerEditor({
               <span className="text-xs text-[var(--color-muted)]">Нет заказов</span>
             ) : null}
           </span>
-          <ChevronDownIcon className="size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
+          <ChevronDownIcon className="ml-auto size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
         </summary>
         <div className="mt-3 flex flex-col gap-3">
           {value.purchases.map((purchase, index) => {
@@ -378,12 +378,12 @@ export function ComponentLedgerEditor({
           <ProjectsIcon className="size-5 shrink-0 text-blue-600" />
           <span role="heading" aria-level={2} className="shrink-0 text-lg font-semibold">Использование</span>
           <span
-            className="min-w-0 flex-1 truncate text-right text-xs text-[var(--color-muted)] group-open:hidden"
+            className="min-w-0 flex-1 truncate text-left text-xs text-[var(--color-muted)]"
             aria-label={`Проектов: ${projectCount}, всего ${usedDisplay} шт.`}
           >
             {projectCountText(projectCount)} · {usedDisplay} шт.
           </span>
-          <ChevronDownIcon className="size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
+          <ChevronDownIcon className="ml-auto size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
         </summary>
         <div className="mt-3 flex flex-col gap-3">
           {value.usages.map((usage, index) => {
@@ -414,7 +414,7 @@ export function ComponentLedgerEditor({
                   />
                   <button
                     type="button"
-                    className="flex size-11 shrink-0 items-center justify-center rounded-lg text-red-500 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-red-500 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
                     aria-label={`Удалить использование ${index + 1}`}
                     onClick={() =>
                       onChange({
@@ -482,7 +482,7 @@ export function ComponentLedgerEditor({
                         inputMode="numeric"
                         value={usage.quantity ?? ""}
                         placeholder="—"
-                        className="px-1 text-center text-sm"
+                        className="!bg-white px-1 text-center text-sm text-zinc-900"
                         onChange={(event) =>
                           updateUsage(usage.id, {
                             quantity:
