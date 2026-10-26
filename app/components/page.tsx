@@ -7,6 +7,7 @@ import { listComponents } from "@/lib/components-repo";
 import { ComponentGrid } from "@/components/ComponentGrid";
 import { AppHeader } from "@/components/AppHeader";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { ProjectsLinkPending } from "@/components/ProjectsLinkPending";
 import { GearIcon, PlusIcon, ProjectsIcon } from "@/components/ui/Field";
 import { Spinner } from "@/components/ui/states";
 
@@ -56,11 +57,13 @@ export default async function ComponentsPage({ searchParams }: {
           </Link>
           <Link
             href="/projects"
+            prefetch={true}
             aria-label="Проекты"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-[var(--color-accent)] transition hover:bg-[var(--color-surface-2)] active:opacity-70"
+            className="relative inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-[var(--color-accent)] transition hover:bg-[var(--color-surface-2)] active:opacity-70"
           >
             <ProjectsIcon className="size-5 shrink-0" />
             <span className="hidden sm:inline">Проекты</span>
+            <ProjectsLinkPending />
           </Link>
           </div>
         }

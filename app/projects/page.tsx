@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { readCatalog } from "@/lib/components-repo";
+import { orderProjectComponents } from "@/lib/project-components";
 import { AppHeader, BackLink } from "@/components/AppHeader";
-import { ProjectList } from "@/components/ProjectList";
+import { ProjectList, type ProjectListEntry } from "@/components/ProjectList";
 import { PlusIcon } from "@/components/ui/Field";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,39 @@ export default async function ProjectsPage() {
   const ownerId = await currentUserId();
   if (!ownerId) redirect("/login");
   const catalog = await readCatalog(ownerId);
+  const componentsByProject = new Map<
+    string,
+    Map<string, ProjectListEntry["components"][number]>
+  >();
+  for (const item of catalog.items) {
+    for (const usage of item.data.usages ?? []) {
+      let components = componentsByProject.get(usage.projectId);
+      if (!components) {
+        components = new Map();
+        componentsByProject.set(usage.projectId, components);
+      }
+      const component = components.get(item.id);
+      if (component) {
+        component.quantity += usage.quantity ?? 0;
+        component.unknown ||= usage.quantity === undefined;
+      } else {
+        components.set(item.id, {
+          id: item.id,
+          name: item.data.name,
+          image: item.data.images?.[0],
+          quantity: usage.quantity ?? 0,
+          unknown: usage.quantity === undefined,
+        });
+      }
+    }
+  }
+  const projects: ProjectListEntry[] = catalog.projects.map((project) => ({
+    ...project,
+    components: orderProjectComponents(
+      [...(componentsByProject.get(project.id)?.values() ?? [])],
+      project.componentOrder,
+    ),
+  }));
   return (
     <>
       <AppHeader
@@ -29,35 +63,7 @@ export default async function ProjectsPage() {
         }
       />
       <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-5">
-        <ProjectList
-          initial={catalog.projects.map((project) => {
-            const components = catalog.items.flatMap((item) => {
-              const usages = (item.data.usages ?? []).filter(
-                (usage) => usage.projectId === project.id,
-              );
-              if (!usages.length) return [];
-              return [
-                {
-                  id: item.id,
-                  name: item.data.name,
-                  quantity: usages.reduce(
-                    (sum, usage) => sum + (usage.quantity ?? 0),
-                    0,
-                  ),
-                  unknown: usages.some((usage) => usage.quantity === undefined),
-                },
-              ];
-            });
-            const order = new Map(
-              (project.componentOrder ?? []).map((id, index) => [id, index]),
-            );
-            components.sort(
-              (a, b) =>
-                (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity),
-            );
-            return { ...project, components };
-          })}
-        />
+        <ProjectList initial={projects} />
       </div>
     </>
   );

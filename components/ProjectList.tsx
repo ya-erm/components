@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -11,6 +12,7 @@ export type ProjectListEntry = Project & {
   components: {
     id: string;
     name: string;
+    image?: string;
     quantity: number;
     unknown: boolean;
   }[];
@@ -57,14 +59,11 @@ export function ProjectList({ initial }: { initial: ProjectListEntry[] }) {
 
   return (
     <>
-      {items.length > 1 ? (
-        <p className="text-xs text-[var(--color-muted)]">
-          Перетаскивайте за ⠿, чтобы изменить порядок проектов.
+      {saving ? (
+        <p role="status" className="text-xs text-[var(--color-muted)]">
+          Сохраняем порядок…
         </p>
       ) : null}
-      <p role="status" className="text-xs text-[var(--color-muted)]">
-        {saving ? "Сохраняем порядок…" : ""}
-      </p>
       {error ? (
         <p role="alert" className="text-sm text-red-500">
           {error}
@@ -96,9 +95,18 @@ export function ProjectList({ initial }: { initial: ProjectListEntry[] }) {
                 <li key={component.id}>
                   <Link
                     href={`/components/${encodeURIComponent(component.id)}`}
-                    className="flex items-start justify-between gap-3 text-sm"
+                    className="flex items-center gap-2 text-sm"
                   >
-                    <span className="min-w-0 break-words text-[var(--color-accent)]">
+                    {component.image ? (
+                      <span className="relative size-9 shrink-0 overflow-hidden rounded-md bg-[var(--color-surface-2)]">
+                        <Image src={component.image} alt="" fill sizes="36px" className="object-cover" />
+                      </span>
+                    ) : (
+                      <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--color-surface-2)] font-medium text-[var(--color-muted)]">
+                        {component.name.slice(0, 1).toUpperCase() || "·"}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 break-words text-[var(--color-accent)]">
                       {component.name}
                     </span>
                     <span className="shrink-0 tabular-nums">
