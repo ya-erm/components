@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import Link, { useLinkStatus } from "next/link";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/schema";
@@ -18,21 +18,6 @@ export type ProjectListEntry = Project & {
     unknown: boolean;
   }[];
 };
-
-function ProjectLinkPending() {
-  const { pending } = useLinkStatus();
-  return (
-    <>
-      <span
-        aria-hidden="true"
-        className={`pointer-events-none absolute right-0 top-0 size-3 rounded-full border-2 border-[var(--color-accent)] border-t-transparent ${pending ? "animate-spin opacity-100" : "opacity-0"}`}
-      />
-      <span role="status" className="sr-only">
-        {pending ? "Открываем проект" : ""}
-      </span>
-    </>
-  );
-}
 
 export function ProjectList({ initial }: { initial: ProjectListEntry[] }) {
   const router = useRouter();
@@ -118,10 +103,9 @@ export function ProjectList({ initial }: { initial: ProjectListEntry[] }) {
                   prefetchProject(project.id);
                 }}
                 onClick={() => setPreview(project)}
-                className="relative min-w-0 flex-1 rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+                className="min-w-0 flex-1 rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
               >
                 <ProjectCard project={project} />
-                <ProjectLinkPending />
               </Link>
               {handle}
             </div>
