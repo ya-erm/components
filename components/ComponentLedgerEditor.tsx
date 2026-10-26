@@ -179,18 +179,26 @@ export function ComponentLedgerEditor({
             return (
               <div
                 key={purchase.id}
-                className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] p-3"
+                className="flex flex-col gap-2.5 rounded-xl border border-[var(--color-border)] p-2.5 sm:p-3"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <label
-                    htmlFor={`order-name-${purchase.id}`}
-                    className="text-sm font-medium text-[var(--color-muted)]"
-                  >
-                    Название или номер
-                  </label>
+                <div className="flex items-center gap-2">
+                  {order ? (
+                    <Input
+                      id={`order-name-${purchase.id}`}
+                      aria-label={`Название или номер заказа ${index + 1}`}
+                      value={order.number}
+                      required
+                      maxLength={200}
+                      onChange={(event) =>
+                        updateOrder(order.id, { number: event.target.value })
+                      }
+                      placeholder="Название или номер"
+                      className="min-w-0 flex-1"
+                    />
+                  ) : null}
                   <button
                     type="button"
-                    className="text-sm text-red-500"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] text-red-500 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
                     aria-label={`Удалить заказ ${index + 1} у компонента`}
                     onClick={() =>
                       onChange({
@@ -201,34 +209,28 @@ export function ComponentLedgerEditor({
                       })
                     }
                   >
-                    Убрать
+                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="size-5">
+                      <path
+                        d="M4.5 6h11M8 6V4.8A1.3 1.3 0 0 1 9.3 3.5h1.4A1.3 1.3 0 0 1 12 4.8V6m2.2 0-.5 9A1.5 1.5 0 0 1 12.2 16.5H7.8A1.5 1.5 0 0 1 6.3 15l-.5-9"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </button>
                 </div>
-                {order ? (
-                  <Input
-                    id={`order-name-${purchase.id}`}
-                    value={order.number}
-                    required
-                    maxLength={200}
-                    onChange={(event) =>
-                      updateOrder(order.id, { number: event.target.value })
-                    }
-                    placeholder="Например: AliExpress, октябрь"
-                  />
-                ) : null}
-                <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="Количество"
-                    htmlFor={`purchase-count-${purchase.id}`}
-                  >
+                <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)]">
                     <Input
                       id={`purchase-count-${purchase.id}`}
+                      aria-label={`Количество в заказе ${index + 1}`}
                       type="number"
                       inputMode="numeric"
                       min={0}
                       step={1}
                       value={purchase.quantity ?? ""}
-                      placeholder="Неизвестно"
+                      placeholder="Шт."
+                      className="min-w-0 px-2 text-center"
                       onChange={(event) =>
                         updatePurchase(purchase.id, {
                           quantity:
@@ -238,13 +240,10 @@ export function ComponentLedgerEditor({
                         })
                       }
                     />
-                  </Field>
-                  <Field
-                    label="Статус"
-                    htmlFor={`purchase-status-${purchase.id}`}
-                  >
                     <StatusSelect
                       id={`purchase-status-${purchase.id}`}
+                      aria-label={`Статус заказа ${index + 1}`}
+                      className="px-2.5 text-sm"
                       value={purchase.status}
                       onChange={(status) =>
                         updatePurchase(purchase.id, {
@@ -266,25 +265,17 @@ export function ComponentLedgerEditor({
                         })),
                       ]}
                     />
-                  </Field>
                 </div>
                 {order ? (
-                  <Field
-                    label="Трек-номер"
-                    htmlFor={`order-track-${order.id}`}
-                    hint={
-                      order.trackingNumbers.length > 1
-                        ? "Ранее сохранённые треки перечислены через запятую."
-                        : undefined
-                    }
-                  >
+                  <div>
                     <Input
                       id={`order-track-${order.id}`}
+                      aria-label="Трек-номер"
                       value={order.trackingNumbers.join(", ")}
                       maxLength={
                         order.trackingNumbers.length > 1 ? undefined : 200
                       }
-                      placeholder="Не указан"
+                      placeholder="Трек-номер"
                       onChange={(event) =>
                         updateOrder(order.id, {
                           trackingNumbers: event.target.value
@@ -294,12 +285,17 @@ export function ComponentLedgerEditor({
                         })
                       }
                     />
-                  </Field>
+                    {order.trackingNumbers.length > 1 ? (
+                      <p className="mt-1 text-xs text-[var(--color-muted)]">
+                        Трек-номера перечислены через запятую.
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {order && first ? (
                   <details
                     open={!initial.orders.some((value) => value.id === order.id)}
-                    className="border-t border-[var(--color-border)] pt-3"
+                    className="border-t border-[var(--color-border)] pt-2.5"
                   >
                     <summary className="cursor-pointer text-sm text-[var(--color-muted)]">
                       Ссылка и комментарии
