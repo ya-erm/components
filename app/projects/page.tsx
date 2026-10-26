@@ -50,7 +50,7 @@ export default async function ProjectsPage() {
     <>
       <AppHeader
         title="Проекты"
-        left={<BackLink href="/components" />}
+        left={<BackLink href="/components" prefetch />}
         right={
           <Link
             href="/projects/new"
