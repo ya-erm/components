@@ -5,7 +5,7 @@
 //      S3_PUBLIC_URL=http://127.0.0.1:19000/components-test AUTH_URL=http://localhost:3000 pnpm dev
 import { createServer } from "node:http";
 import bcrypt from "bcryptjs";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 const etag = (value) =>
   value === undefined
     ? undefined
@@ -63,6 +63,25 @@ createServer(async (req, res) => {
     return;
   }
   if (req.method === "PUT") {
+    const url = new URL(req.url, "http://127.0.0.1:19000");
+    const query = url.searchParams;
+    if (query.has("X-Amz-Signature")) {
+      const encode = (value) => encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+      const canonicalQuery = [...query].filter(([name]) => name !== "X-Amz-Signature")
+        .map(([name, value]) => [encode(name), encode(value)]).sort(([a, av], [b, bv]) => a < b ? -1 : a > b ? 1 : av < bv ? -1 : av > bv ? 1 : 0)
+        .map(([name, value]) => `${name}=${value}`).join("&");
+      const signedHeaders = query.get("X-Amz-SignedHeaders");
+      const canonicalHeaders = signedHeaders.split(";").map((name) => `${name}:${String(req.headers[name] ?? "").trim()}\n`).join("");
+      const canonical = ["PUT", url.pathname, canonicalQuery, canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"].join("\n");
+      const [access, date, region, service] = query.get("X-Amz-Credential").split("/");
+      const scope = `${date}/${region}/${service}/aws4_request`;
+      const hmac = (key, value) => createHmac("sha256", key).update(value).digest();
+      const signingKey = hmac(hmac(hmac(hmac("AWS4test", date), region), service), "aws4_request");
+      const toSign = ["AWS4-HMAC-SHA256", query.get("X-Amz-Date"), scope, createHash("sha256").update(canonical).digest("hex")].join("\n");
+      if (access !== "test" || createHmac("sha256", signingKey).update(toSign).digest("hex") !== query.get("X-Amz-Signature")) {
+        res.writeHead(403); res.end("Invalid signature"); return;
+      }
+    }
     if (writeBehavior.delayMs)
       await new Promise((resolve) => setTimeout(resolve, writeBehavior.delayMs));
     if (writeBehavior.failWrites > 0) {
@@ -83,15 +102,18 @@ createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     objects.set(key, Buffer.concat(chunks));
-    metadata.set(key, req.headers["x-amz-meta-filename"]);
+    metadata.set(key, req.headers["x-amz-meta-filename"] ?? query.get("x-amz-meta-filename"));
     contentTypes.set(key, req.headers["content-type"] ?? "application/octet-stream");
     res.setHeader("ETag", etag(objects.get(key)));
     res.end();
-  } else if (req.method === "GET" && objects.has(key)) {
-    res.setHeader("Content-Type", contentTypes.get(key) ?? "application/json");
+  } else if (["GET", "HEAD"].includes(req.method) && objects.has(key)) {
+    const query = new URL(req.url, "http://127.0.0.1:19000").searchParams;
+    res.setHeader("Content-Type", query.get("response-content-type") ?? contentTypes.get(key) ?? "application/json");
+    if (query.has("response-content-disposition")) res.setHeader("Content-Disposition", query.get("response-content-disposition"));
+    res.setHeader("Content-Length", Buffer.byteLength(objects.get(key)));
     res.setHeader("ETag", etag(objects.get(key)));
     if (metadata.get(key)) res.setHeader("x-amz-meta-filename", metadata.get(key));
-    res.end(objects.get(key));
+    res.end(req.method === "HEAD" ? undefined : objects.get(key));
   } else {
     res.writeHead(404, { "Content-Type": "application/xml" });
     res.end(

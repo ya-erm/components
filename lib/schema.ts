@@ -30,7 +30,9 @@ export const MAX_FILE_SIZE = 4.5 * 1024 * 1024; // 4.5 МБ — лимит те�
 
 export const MAX_TAGS = 30;
 export const MAX_ATTACHMENTS = 30;
-export const MAX_ATTACHMENT_SIZE = 4 * 1024 * 1024;
+export const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
+// Старый multipart API оставляем для небольших файлов; большие идут прямо в S3.
+export const MAX_ATTACHMENT_PROXY_SIZE = 4 * 1024 * 1024;
 export const attachmentSchema = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(255),
@@ -39,6 +41,10 @@ export const attachmentSchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type Attachment = z.infer<typeof attachmentSchema>;
+export const attachmentUploadSchema = attachmentSchema
+  .pick({ name: true, size: true, contentType: true })
+  .extend({ contentType: z.string().min(1).max(200).default("application/octet-stream") })
+  .strict();
 
 /** Подсказки для поля «тип» (свой ввод тоже разрешён). */
 export const COMPONENT_TYPES = [

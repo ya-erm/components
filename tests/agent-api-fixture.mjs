@@ -84,13 +84,34 @@ for (const name of ["Чертёж.pdf", "part.step", "model.stl", "sources.zip"]
   assert.equal(uploaded.status, 201);
   const file = await uploaded.json();
   attachments.push(file);
-  const download = await api(`/api/files/${file.id}`);
+  const redirect = await api(`/api/files/${file.id}`);
+  assert.equal(redirect.status, 307);
+  const download = await fetch(redirect.headers.get("location"));
   assert.equal(download.status, 200);
-  assert.equal(download.headers.get("x-content-type-options"), "nosniff");
   assert.ok(download.headers.get("content-disposition").includes("attachment;"));
   assert.ok(download.headers.get("content-disposition").includes(encodeURIComponent(name)));
   assert.deepEqual(Buffer.from(await download.arrayBuffer()), fileBytes);
 }
+// Direct upload bypasses the application body limit and enforces the signed exact size.
+const bigBytes = Buffer.alloc(20 * 1024 * 1024, 137);
+const direct = await write("/api/files", { name: "20MB-model.stl", size: bigBytes.length }, "POST");
+assert.equal(direct.status, 201);
+const permit = await direct.json();
+const signed = new URL(permit.upload.url);
+assert.ok(signed.searchParams.get("X-Amz-SignedHeaders").split(";").includes("content-length"));
+assert.ok(signed.pathname.endsWith(`/users/fixture-demo/files/${permit.attachment.id}`));
+const uploadDirect = (bytes, url = permit.upload.url) => fetch(url, { method: "PUT", headers: permit.upload.headers, body: bytes });
+assert.equal((await uploadDirect(bigBytes.subarray(1))).status, 403);
+const tampered = new URL(permit.upload.url);
+tampered.pathname = "/components-test/users/victim/files/attack";
+assert.equal((await uploadDirect(bigBytes, tampered)).status, 403);
+assert.equal((await uploadDirect(bigBytes)).status, 200);
+const bigRedirect = await api(`/api/files/${permit.attachment.id}`);
+assert.equal(bigRedirect.status, 307);
+const bigDownload = await fetch(bigRedirect.headers.get("location"));
+assert.deepEqual(Buffer.from(await bigDownload.arrayBuffer()), bigBytes);
+attachments.push(permit.attachment);
+assert.equal((await write("/api/files", { name: "oversized.stl", size: bigBytes.length + 1 }, "POST")).status, 400);
 assert.equal((await write(path, { data: { attachments } })).status, 200);
 assert.deepEqual((await read(path)).data.attachments, attachments);
 assert.ok((await (await session(`/components/${component.id}`)).text()).includes("Прикрепить файлы"));

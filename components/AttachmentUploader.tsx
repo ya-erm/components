@@ -21,7 +21,7 @@ export function AttachmentUploader({ value, onChange, onUploadingChange }: {
       return;
     }
     if (files.some((file) => file.size === 0 || file.size > MAX_ATTACHMENT_SIZE)) {
-      setError("Выберите непустые файлы размером до 4 МБ каждый");
+      setError("Выберите непустые файлы размером до 20 МБ каждый");
       return;
     }
     setUploading(true);
@@ -29,12 +29,17 @@ export function AttachmentUploader({ value, onChange, onUploadingChange }: {
     const uploaded: Attachment[] = [];
     try {
       for (const file of files) {
-        const body = new FormData();
-        body.append("file", file);
-        const response = await fetch("/api/files", { method: "POST", body });
+        const response = await fetch("/api/files", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+        });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error ?? "Не удалось загрузить файл");
-        uploaded.push(result);
+        const saved = await fetch(result.upload.url, {
+          method: "PUT", headers: result.upload.headers, body: file, credentials: "omit",
+        });
+        if (!saved.ok) throw new Error("Не удалось загрузить файл в хранилище. Повторите попытку.");
+        uploaded.push(result.attachment);
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : "Ошибка сети");
@@ -50,7 +55,7 @@ export function AttachmentUploader({ value, onChange, onUploadingChange }: {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm font-medium text-[var(--color-muted)]">Файлы · {value.length}</p>
-      <p className="text-xs text-[var(--color-muted)]">PDF, STEP, STL, чертежи и любые другие файлы. До 4 МБ каждый, не более {MAX_ATTACHMENTS} файлов.</p>
+      <p className="text-xs text-[var(--color-muted)]">PDF, STEP, STL, чертежи и любые другие файлы. До 20 МБ каждый, не более {MAX_ATTACHMENTS} файлов.</p>
       <input ref={input} type="file" multiple className="sr-only" aria-label="Прикрепить файлы" disabled={uploading} onChange={(event) => upload(Array.from(event.target.files ?? []))} />
       <ul className="flex flex-col gap-2">
         {value.map((file) => (

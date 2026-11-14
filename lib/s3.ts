@@ -3,9 +3,11 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   NoSuchKey,
 } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
  * S3-совместимое хранилище (AWS S3 / Yandex Cloud / MinIO).
@@ -34,6 +36,7 @@ function client(): S3Client {
     // endpoint пустой => нативный AWS S3; иначе MinIO / Yandex Cloud и т.п.
     endpoint: process.env.S3_ENDPOINT || undefined,
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: env("S3_ACCESS_KEY_ID"),
       secretAccessKey: env("S3_SECRET_ACCESS_KEY"),
@@ -115,7 +118,7 @@ export async function putJson<T>(key: string, value: T): Promise<void> {
   );
 }
 
-/** Файлы не попадают под публичную политику public/* и всегда скачиваются через API. */
+/** Файлы не попадают под публичную политику public/*. */
 export async function uploadAttachment(ownerId: string, id: string, buffer: Buffer, name: string) {
   await client().send(new PutObjectCommand({
     Bucket: BUCKET,
@@ -126,9 +129,35 @@ export async function uploadAttachment(ownerId: string, id: string, buffer: Buff
   }));
 }
 
-export async function getAttachment(ownerId: string, id: string) {
+/** Подпись ограничивает конкретный приватный ключ, размер и метаданные файла. */
+export async function createAttachmentUpload(ownerId: string, id: string, name: string, size: number) {
+  const url = await getSignedUrl(client(), new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: `users/${ownerId}/files/${id}`,
+    ContentLength: size,
+    ContentType: "application/octet-stream",
+    Metadata: { filename: encodeURIComponent(name) },
+  }), { expiresIn: 300 });
+  return { url, method: "PUT" as const, headers: { "Content-Type": "application/octet-stream" } };
+}
+
+function attachmentDisposition(name: string) {
+  const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  const encoded = encodeURIComponent(name).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+export async function attachmentDownloadUrl(ownerId: string, id: string) {
+  const Key = `users/${ownerId}/files/${id}`;
   try {
-    return await client().send(new GetObjectCommand({ Bucket: BUCKET, Key: `users/${ownerId}/files/${id}` }));
+    const object = await client().send(new HeadObjectCommand({ Bucket: BUCKET, Key }));
+    const name = decodeURIComponent(object.Metadata?.filename ?? "file").replace(/[\r\n]/g, "_");
+    return getSignedUrl(client(), new GetObjectCommand({
+      Bucket: BUCKET, Key,
+      ResponseContentType: "application/octet-stream",
+      ResponseContentDisposition: attachmentDisposition(name),
+      ResponseCacheControl: "private, no-store",
+    }), { expiresIn: 60 });
   } catch (error) {
     if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return null;
     throw error;
