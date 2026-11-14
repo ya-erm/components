@@ -29,6 +29,16 @@ export const MAX_IMAGES = 10;
 export const MAX_FILE_SIZE = 4.5 * 1024 * 1024; // 4.5 МБ — лимит тела serverless-функции Vercel
 
 export const MAX_TAGS = 30;
+export const MAX_ATTACHMENTS = 30;
+export const MAX_ATTACHMENT_SIZE = 4 * 1024 * 1024;
+export const attachmentSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(255),
+  size: z.number().int().min(1).max(MAX_ATTACHMENT_SIZE),
+  contentType: z.string().min(1).max(200),
+  createdAt: z.string().datetime(),
+});
+export type Attachment = z.infer<typeof attachmentSchema>;
 
 /** Подсказки для поля «тип» (свой ввод тоже разрешён). */
 export const COMPONENT_TYPES = [
@@ -235,6 +245,7 @@ export type Shipment = z.infer<typeof shipmentSchema>;
 export type Logistics = z.infer<typeof logisticsSchema>;
 
 export const componentFieldsSchema = z.object({
+  attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).default([]),
   name: z
     .string({ required_error: "Укажите название" })
     .trim()
@@ -313,6 +324,7 @@ export const componentDataSchema = componentFieldsSchema
     for (const field of [
       "inventory",
       "comments",
+      "attachments",
       "history",
       "purchases",
       "usages",

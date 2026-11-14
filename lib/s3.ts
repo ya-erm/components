@@ -115,6 +115,26 @@ export async function putJson<T>(key: string, value: T): Promise<void> {
   );
 }
 
+/** Файлы не попадают под публичную политику public/* и всегда скачиваются через API. */
+export async function uploadAttachment(ownerId: string, id: string, buffer: Buffer, name: string) {
+  await client().send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: `users/${ownerId}/files/${id}`,
+    Body: buffer,
+    ContentType: "application/octet-stream",
+    Metadata: { filename: encodeURIComponent(name) },
+  }));
+}
+
+export async function getAttachment(ownerId: string, id: string) {
+  try {
+    return await client().send(new GetObjectCommand({ Bucket: BUCKET, Key: `users/${ownerId}/files/${id}` }));
+  } catch (error) {
+    if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return null;
+    throw error;
+  }
+}
+
 /** Версия объекта для условной записи после предпросмотра импорта. */
 export async function getJsonVersioned<T>(
   key: string,

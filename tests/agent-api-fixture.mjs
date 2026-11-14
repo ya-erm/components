@@ -75,12 +75,42 @@ assert.deepEqual(changed.data.tags, ["QA"]);
 assert.equal((await write(path, { data: { usages: [{ id: "usage", projectId, quantity: 6 }] } })).status, 400);
 assert.equal((await write(path, { data: { nonexistent: true } })).status, 400);
 assert.equal((await write(path, { data: { name: "" } })).status, 400);
+const attachments = [];
+const fileBytes = Buffer.from([0, 255, 128, 65, 10]);
+for (const name of ["Чертёж.pdf", "part.step", "model.stl", "sources.zip"]) {
+  const body = new FormData();
+  body.append("file", new Blob([fileBytes], { type: "application/octet-stream" }), name);
+  const uploaded = await api("/api/files", { method: "POST", body });
+  assert.equal(uploaded.status, 201);
+  const file = await uploaded.json();
+  attachments.push(file);
+  const download = await api(`/api/files/${file.id}`);
+  assert.equal(download.status, 200);
+  assert.equal(download.headers.get("x-content-type-options"), "nosniff");
+  assert.ok(download.headers.get("content-disposition").includes("attachment;"));
+  assert.ok(download.headers.get("content-disposition").includes(encodeURIComponent(name)));
+  assert.deepEqual(Buffer.from(await download.arrayBuffer()), fileBytes);
+}
+assert.equal((await write(path, { data: { attachments } })).status, 200);
+assert.deepEqual((await read(path)).data.attachments, attachments);
+assert.ok((await (await session(`/components/${component.id}`)).text()).includes("Прикрепить файлы"));
+assert.equal((await api("/api/files/not-a-uuid")).status, 404);
+assert.equal((await fetch(base + `/api/files/${attachments[0].id}`, { redirect: "manual" })).status, 401);
+const oversized = new FormData();
+oversized.append("file", new Blob([Buffer.alloc(4 * 1024 * 1024 + 1)]), "large.stl");
+assert.equal((await api("/api/files", { method: "POST", body: oversized })).status, 400);
+const projectDetails = await read(`/api/projects/${projectId}`);
+assert.equal(projectDetails.project.id, projectId);
+assert.ok(projectDetails.version);
+assert.ok((await read("/api/projects")).some((project) => project.id === projectId));
+assert.equal((await write(`/api/projects/${projectId}/components`, { components: [{ id: component.id, quantity: 2 }], expected: projectDetails.version }, "PUT")).status, 200);
 assert.equal((await write("/api/logistics", { projects: [{ id: projectId, name: `Renamed project ${projectId}` }] })).status, 200);
 assert.ok((await read("/api/logistics")).orders.some((entry) => entry.id === orderId));
 assert.ok((await read(`/api/components?q=${encodeURIComponent(`Renamed project ${projectId}`)}&all=1`)).items.some((entry) => entry.id === component.id));
 await read("/api/components/facets");
 const exported = await read("/api/components/export");
 assert.ok(exported.orders.find((entry) => entry.id === orderId).comments.length);
+assert.deepEqual(exported.components.find((entry) => entry.id === component.id).data.attachments, attachments);
 assert.equal((await write("/api/components/import", exported, "POST")).status, 200);
 
 // Force overlapping S3 reads/writes to exercise conditional writes and retries.
@@ -135,6 +165,8 @@ const other = await issue("Other owner");
 assert.equal((await api(path, {}, other.token)).status, 404);
 assert.equal((await api(path, { method: "PATCH", ...json({ data: { note: "attack" } }) }, other.token)).status, 404);
 assert.equal((await api(path, { method: "DELETE" }, other.token)).status, 404);
+assert.equal((await api(`/api/files/${attachments[0].id}`, {}, other.token)).status, 404);
+assert.equal((await api(`/api/projects/${projectId}`, {}, other.token)).status, 404);
 
 // Restore fixture session and revoke the original token.
 const restoreCsrf = await (await session("/api/auth/csrf")).json();
@@ -147,4 +179,4 @@ assert.equal((await api("/api/components", {}, expiring.token)).status, 401);
 assert.equal((await api(path, { method: "DELETE" })).status, 200);
 assert.equal((await session(`/api/settings/tokens?id=${token.id}`, { method: "DELETE" })).status, 200);
 assert.equal((await api("/api/components")).status, 401);
-console.log("Agent API passed: issue/hash/list/revoke/expiry/CSRF, session compatibility, auth errors, owner isolation, CRUD, partial update, ETag, relations, stock checks, search, import/export and settings rendering.");
+console.log("Agent API passed: token lifecycle/hash/CSRF, owner isolation, CRUD/ETag/concurrent writes, projects, private PDF/STEP/STL/ZIP round trip, file limits, images, AliExpress, import/export and settings rendering.");

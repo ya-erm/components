@@ -11,6 +11,7 @@ import {
   type Usage,
 } from "@/lib/schema";
 import { ImageUploader } from "@/components/ImageUploader";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { TagInput } from "@/components/TagInput";
 import { AppHeader, BackLink } from "@/components/AppHeader";
 import { CloseComponentModal } from "@/components/ComponentModal";
@@ -49,6 +50,7 @@ type Props = {
 };
 
 type FormValues = {
+  attachments: ComponentData["attachments"];
   name: string;
   images: string[];
   inventory: ComponentData["inventory"];
@@ -63,6 +65,7 @@ type FormValues = {
 };
 
 function toComponentPayload({
+  attachments,
   name,
   images,
   inventory,
@@ -76,6 +79,7 @@ function toComponentPayload({
   url,
 }: FormValues) {
   return {
+    attachments,
     name,
     images,
     inventory,
@@ -122,6 +126,8 @@ export function ComponentForm({
 
   const [name, setName] = useState(initial?.name ?? "");
   const [images, setImages] = useState<string[]>(initial?.images ?? []);
+  const [attachments, setAttachments] = useState(initial?.attachments ?? []);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [inventoryValue, setInventoryValue] = useState({
     inventory: initial?.inventory ?? [],
     history: initial?.history ?? [],
@@ -144,6 +150,7 @@ export function ComponentForm({
     () =>
       toSnapshot({
         data: toComponentPayload({
+          attachments: initial?.attachments ?? [],
           name: initial?.name ?? "",
           images: initial?.images ?? [],
           inventory: initial?.inventory ?? [],
@@ -162,6 +169,7 @@ export function ComponentForm({
   );
   const candidate = {
     data: toComponentPayload({
+      attachments,
       name,
       images,
       ...inventoryValue,
@@ -218,7 +226,7 @@ export function ComponentForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if ((!hasChanges && !onSaveDraft) || saving || saveStarted.current) return;
+    if ((!hasChanges && !onSaveDraft) || saving || uploadingFiles || saveStarted.current) return;
     setErrors({});
     setFormError(null);
 
@@ -302,7 +310,7 @@ export function ComponentForm({
           <button
             type="submit"
             form={FORM_ID}
-            disabled={saving || (!hasChanges && !onSaveDraft)}
+            disabled={saving || uploadingFiles || (!hasChanges && !onSaveDraft)}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-[var(--color-accent)] transition active:opacity-70 disabled:opacity-40"
           >
             {saving ? <Spinner className="size-4" /> : "Готово"}
@@ -333,6 +341,11 @@ export function ComponentForm({
             {errors.images ? (
               <p className="mt-1.5 text-sm text-red-400">{errors.images}</p>
             ) : null}
+          </div>
+
+          <div>
+            <AttachmentUploader value={attachments} onChange={setAttachments} onUploadingChange={setUploadingFiles} />
+            {errors.attachments ? <p className="mt-1.5 text-sm text-red-400">{errors.attachments}</p> : null}
           </div>
 
           <div>
@@ -438,7 +451,7 @@ export function ComponentForm({
           <div>
             <Button
               type="submit"
-              disabled={saving || (!hasChanges && !onSaveDraft)}
+              disabled={saving || uploadingFiles || (!hasChanges && !onSaveDraft)}
               className="w-full"
             >
               {saving ? (

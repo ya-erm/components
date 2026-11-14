@@ -41,6 +41,7 @@ const objects = new Map([
 ]);
 const contentTypes = new Map();
 let writeBehavior = { delayMs: 0, failWrites: 0 };
+const metadata = new Map();
 createServer(async (req, res) => {
   const key = decodeURIComponent(
     new URL(req.url, "http://127.0.0.1:19000").pathname,
@@ -82,12 +83,14 @@ createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     objects.set(key, Buffer.concat(chunks));
+    metadata.set(key, req.headers["x-amz-meta-filename"]);
     contentTypes.set(key, req.headers["content-type"] ?? "application/octet-stream");
     res.setHeader("ETag", etag(objects.get(key)));
     res.end();
   } else if (req.method === "GET" && objects.has(key)) {
     res.setHeader("Content-Type", contentTypes.get(key) ?? "application/json");
     res.setHeader("ETag", etag(objects.get(key)));
+    if (metadata.get(key)) res.setHeader("x-amz-meta-filename", metadata.get(key));
     res.end(objects.get(key));
   } else {
     res.writeHead(404, { "Content-Type": "application/xml" });
