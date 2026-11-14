@@ -3,6 +3,8 @@ import { auth } from "@/auth";
 import { AppHeader, BackLink } from "@/components/AppHeader";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ImportExport } from "@/components/ImportExport";
+import { ApiTokens } from "@/components/ApiTokens";
+import { listApiTokens } from "@/lib/api-tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  const tokens = await listApiTokens(session.user.id);
 
   return (
     <>
@@ -45,6 +48,9 @@ export default async function SettingsPage() {
           <div className="flex flex-wrap gap-2">
             <ImportExport />
           </div>
+        </Section>
+        <Section title="Доступ для агентов">
+          <ApiTokens initialTokens={tokens} />
         </Section>
       </div>
     </>

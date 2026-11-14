@@ -234,7 +234,7 @@ export type Order = z.infer<typeof orderSchema>;
 export type Shipment = z.infer<typeof shipmentSchema>;
 export type Logistics = z.infer<typeof logisticsSchema>;
 
-const componentFieldsSchema = z.object({
+export const componentFieldsSchema = z.object({
   name: z
     .string({ required_error: "Укажите название" })
     .trim()

@@ -1,12 +1,15 @@
 import { ProjectConflictError } from "@/lib/project-mutations";
 import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/session";
-import { componentSaveSchema } from "@/lib/schema";
+import { componentSaveSchema, componentFieldsSchema, logisticsSchema } from "@/lib/schema";
+import { z } from "zod";
 import { CatalogValidationError } from "@/lib/catalog";
 import {
   deleteComponent,
   getComponent,
   updateComponent,
+  patchComponent,
+  CatalogConflictError,
 } from "@/lib/components-repo";
 
 export const runtime = "nodejs";
@@ -21,7 +24,30 @@ export async function GET(_req: Request, { params }: Params) {
   const { id } = await params;
   const item = await getComponent(ownerId, id);
   if (!item) return NextResponse.json({ error: "Не найдено" }, { status: 404 });
-  return NextResponse.json(item);
+  return NextResponse.json(item, { headers: { ETag: JSON.stringify(item.updatedAt), "Cache-Control": "no-store" } });
+}
+
+const patchSchema = z.object({
+  data: componentFieldsSchema.partial().strict(),
+  logistics: logisticsSchema.optional(),
+}).strict();
+
+export async function PATCH(req: Request, { params }: Params) {
+  const ownerId = await currentUserId();
+  if (!ownerId) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  const parsed = patchSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "Ошибка валидации", issues: parsed.error.flatten() }, { status: 400 });
+  const { id } = await params;
+  try {
+    const item = await patchComponent(ownerId, id, parsed.data.data, parsed.data.logistics, req.headers.get("if-match") ?? undefined);
+    if (!item) return NextResponse.json({ error: "Не найдено" }, { status: 404 });
+    return NextResponse.json(item, { headers: { ETag: JSON.stringify(item.updatedAt) } });
+  } catch (error) {
+    if (error instanceof CatalogConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof CatalogValidationError || error instanceof z.ZodError)
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
+  }
 }
 
 export async function PUT(req: Request, { params }: Params) {

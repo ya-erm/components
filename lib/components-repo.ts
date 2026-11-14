@@ -1,4 +1,4 @@
-import { mutateProjectCatalog } from "./project-mutations";
+import { mutateProjectCatalog, ProjectConflictError } from "./project-mutations";
 import { randomUUID } from "crypto";
 import { getJson, getJsonVersioned, putJsonConditional } from "@/lib/s3";
 import {
@@ -18,6 +18,7 @@ import {
   type Logistics,
   type Project,
   hasInventoryStatus,
+  componentDataSchema,
 } from "@/lib/schema";
 import {
   type Catalog,
@@ -138,6 +139,34 @@ export async function acknowledgeImportPreferences(
     }
   }
   throw new AliConflictError("Каталог изменился. Повторите действие.");
+}
+
+export { ProjectConflictError as CatalogConflictError } from "./project-mutations";
+
+export async function saveLogistics(ownerId: string, logistics: Logistics) {
+  return mutateProjectCatalog(ownerId, (catalog) => {
+    const merged = mergeLogistics(catalog, logistics);
+    validateCatalog(merged);
+    Object.assign(catalog, merged);
+    const { orders, shipments, projects } = merged;
+    return { orders, shipments, projects };
+  });
+}
+
+export async function patchComponent(ownerId: string, id: string, patch: Record<string, unknown>, logistics?: Logistics, expectedVersion?: string) {
+  return mutateProjectCatalog(ownerId, (catalog) => {
+    Object.assign(catalog, mergeLogistics(catalog, logistics));
+    const index = catalog.items.findIndex((item) => item.id === id);
+    if (index === -1) return null;
+    const item = catalog.items[index];
+    if (expectedVersion && expectedVersion !== JSON.stringify(item.updatedAt))
+      throw new ProjectConflictError("Компонент изменился. Прочитайте его заново.");
+    const data = componentDataSchema.parse({ ...item.data, ...patch });
+    const updatedAt = new Date(Math.max(Date.now(), Date.parse(item.updatedAt) + 1)).toISOString();
+    catalog.items[index] = { ...item, data, updatedAt };
+    const normalized = normalizeCatalog(catalog);
+    return normalized.items[index];
+  });
 }
 
 export async function getLogistics(ownerId: string): Promise<Logistics> {

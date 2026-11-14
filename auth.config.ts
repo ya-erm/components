@@ -9,6 +9,7 @@ import type { NextAuthConfig } from "next-auth";
 const PUBLIC_PATHS = ["/login", "/register", "/api/register"];
 // Страницы входа/регистрации, с которых авторизованного редиректим в каталог.
 const AUTH_PAGES = ["/login", "/register"];
+const API_PATHS = ["/api/components", "/api/projects", "/api/logistics", "/api/upload", "/api/images/download", "/api/agent", "/api/settings/tokens", "/api/files"];
 
 export const authConfig = {
   pages: {
@@ -33,6 +34,9 @@ export const authConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const path = nextUrl.pathname;
+      // API проверяет сессию или Bearer в Node runtime и отвечает JSON 401.
+      // Управление токенами отдельно требует браузерную сессию.
+      if (API_PATHS.some((prefix) => path === prefix || path.startsWith(prefix + "/"))) return true;
       const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"));
 
       if (isPublic) {
