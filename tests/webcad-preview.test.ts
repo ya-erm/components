@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createWebcadBridge, readPreviewBytes, webcadEmbedUrl, webcadFormat, WEBCAD_ORIGIN, type PreviewState } from "../lib/webcad-preview";
+import { previewLabel } from "../components/WebcadPreview";
 
-function harness(download = async (_signal: AbortSignal) => new Uint8Array([1, 2, 3]).buffer) {
+function harness(download = async (_signal: AbortSignal, _onProgress: (received: number) => void) => new Uint8Array([1, 2, 3]).buffer) {
   const states: PreviewState[] = [];
   const sent: unknown[][] = [];
   const frame = { postMessage: (...args: unknown[]) => sent.push(args) } as unknown as Window;
@@ -83,6 +84,56 @@ test("timeouts, download errors and CAD errors terminate the attempt", async () 
   await new Promise((done) => setTimeout(done, 45));
   assert.equal(slow.states.at(-1)?.phase, "error");
   slow.dispose();
+});
+
+test("download progress: bytes received per chunk, shown as whole percents of the declared size", async () => {
+  const chunks = [new Uint8Array(30), new Uint8Array(30), new Uint8Array(40)];
+  const stream = new ReadableStream<Uint8Array>({ start(c) { for (const x of chunks) c.enqueue(x); c.close(); } });
+  const received: number[] = [];
+  await readPreviewBytes(new Response(stream), 100, (n) => received.push(n));
+  assert.deepEqual(received, [30, 60, 100]);
+
+  const h = harness(async (_signal, onProgress) => {
+    for (const n of [0, 1, 2, 2, 3]) onProgress(n);
+    return new Uint8Array([1, 2, 3]).buffer;
+  });
+  try {
+    await h.handleMessage(h.message("webcad:ready"));
+    // 0 → 0 %, 1 → 33 %, 2 → 66 % (once), 3 → 100 %, then the file is sent
+    assert.deepEqual(h.states.map((s) => [s.phase, s.progress]), [
+      ["downloading", 0], ["downloading", 0.33], ["downloading", 0.66], ["downloading", 1], ["rendering", undefined],
+    ]);
+  } finally { h.dispose(); }
+});
+
+test("WebCAD stages are shown while rendering this request only; unknown stages are ignored", async () => {
+  const h = harness();
+  try {
+    // before the file is sent: not yet
+    await h.handleMessage(h.message("webcad:progress", { stage: "kernel" }));
+    assert.equal(h.states.length, 0);
+    await h.handleMessage(h.message("webcad:ready"));
+    await h.handleMessage(h.message("webcad:progress", { stage: "kernel", requestId: "stale" }));
+    await h.handleMessage(h.message("webcad:progress", { stage: "export" }));
+    await h.handleMessage({ ...h.message("webcad:progress", { stage: "building" }), origin: "https://evil.example" });
+    assert.deepEqual(h.states.at(-1), { phase: "rendering" });
+    await h.handleMessage(h.message("webcad:progress", { stage: "kernel" }));
+    assert.deepEqual(h.states.at(-1), { phase: "rendering", stage: "kernel" });
+    await h.handleMessage(h.message("webcad:progress", { stage: "building" }));
+    assert.deepEqual(h.states.at(-1), { phase: "rendering", stage: "building" });
+    await h.handleMessage(h.message("webcad:loaded"));
+    await h.handleMessage(h.message("webcad:progress", { stage: "kernel" }));
+    assert.equal(h.states.at(-1)?.phase, "ready");
+  } finally { h.dispose(); }
+});
+
+test("labels: the download's percentage (not for the live status), WebCAD's stage", () => {
+  assert.equal(previewLabel({ phase: "downloading", progress: 0.42 }), "Загружаем файл модели… 42 %");
+  assert.equal(previewLabel({ phase: "downloading", progress: 0.42 }, false), "Загружаем файл модели…");
+  assert.equal(previewLabel({ phase: "rendering", stage: "kernel" }), "WebCAD загружает геометрическое ядро…");
+  assert.equal(previewLabel({ phase: "rendering", stage: "building" }), "WebCAD строит модель…");
+  assert.equal(previewLabel({ phase: "rendering" }), "WebCAD строит модель…");
+  assert.equal(previewLabel({ phase: "connecting" }), "Подключаем WebCAD…");
 });
 
 test("file reads enforce declared size for success, oversized, empty and truncated responses", async () => {
