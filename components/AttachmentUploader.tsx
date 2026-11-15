@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { type Attachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_SIZE } from "@/lib/schema";
 import { Button } from "./ui/Button";
+import { WebcadPreview } from "./WebcadPreview";
 
 export function AttachmentUploader({ value, onChange, onUploadingChange }: {
   value: Attachment[];
@@ -59,10 +60,11 @@ export function AttachmentUploader({ value, onChange, onUploadingChange }: {
       <input ref={input} type="file" multiple className="sr-only" aria-label="Прикрепить файлы" disabled={uploading} onChange={(event) => upload(Array.from(event.target.files ?? []))} />
       <ul className="flex flex-col gap-2">
         {value.map((file) => (
-          <li key={file.id} className="flex items-center gap-2 rounded-xl border border-[var(--color-border)] p-3">
-            <a href={`/api/files/${file.id}`} className="min-w-0 flex-1 break-words text-sm text-[var(--color-accent)]">
+          <li key={file.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] p-3">
+            <a href={`/api/files/${file.id}`} className="min-w-0 flex-1 basis-40 break-words text-sm text-[var(--color-accent)]">
               {file.name}<span className="ml-2 text-xs text-[var(--color-muted)]">{Math.max(1, Math.ceil(file.size / 1024))} КБ · Скачать</span>
             </a>
+            <WebcadPreview file={file} />
             <Button type="button" variant="ghost" disabled={uploading} aria-label={`Открепить ${file.name}`} onClick={() => onChange(value.filter((entry) => entry.id !== file.id))}>Убрать</Button>
           </li>
         ))}

@@ -88,7 +88,7 @@ assert.equal((await write(path, { data: { nonexistent: true } })).status, 400);
 assert.equal((await write(path, { data: { name: "" } })).status, 400);
 const attachments = [];
 const fileBytes = Buffer.from([0, 255, 128, 65, 10]);
-for (const name of ["Чертёж.pdf", "part.step", "model.stl", "sources.zip"]) {
+for (const name of ["Чертёж.pdf", "part.step", "model.stl", "project.webcad.json", "sources.zip"]) {
   const body = new FormData();
   body.append("file", new Blob([fileBytes], { type: "application/octet-stream" }), name);
   const uploaded = await api("/api/files", { method: "POST", body });
@@ -125,7 +125,12 @@ attachments.push(permit.attachment);
 assert.equal((await write("/api/files", { name: "oversized.stl", size: bigBytes.length + 1 }, "POST")).status, 400);
 assert.equal((await write(path, { data: { attachments } })).status, 200);
 assert.deepEqual((await read(path)).data.attachments, attachments);
-assert.ok((await (await session(`/components/${component.id}`)).text()).includes("Прикрепить файлы"));
+const componentHtml = await (await session(`/components/${component.id}`)).text();
+assert.ok(componentHtml.includes("Прикрепить файлы"));
+for (const name of ["part.step", "model.stl", "project.webcad.json", "20MB-model.stl"])
+  assert.ok(componentHtml.includes(`Посмотреть 3D: ${name}`));
+for (const name of ["Чертёж.pdf", "sources.zip"])
+  assert.ok(!componentHtml.includes(`Посмотреть 3D: ${name}`));
 assert.equal((await api("/api/files/not-a-uuid")).status, 404);
 assert.equal((await fetch(base + `/api/files/${attachments[0].id}`, { redirect: "manual" })).status, 401);
 const oversized = new FormData();
