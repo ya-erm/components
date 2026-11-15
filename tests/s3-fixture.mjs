@@ -40,9 +40,17 @@ const objects = new Map([
   ],
 ]);
 const contentTypes = new Map();
-let writeBehavior = { delayMs: 0, failWrites: 0 };
+let writeBehavior = { delayMs: 0, failWrites: 0, readDelayMs: 0 };
 const metadata = new Map();
 createServer(async (req, res) => {
+  // Mirror production storage CORS for browser integration against local fixtures.
+  if (["http://localhost:3000", "http://127.0.0.1:3000"].includes(req.headers.origin)) {
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Expose-Headers", "ETag,Content-Disposition");
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+  }
   const key = decodeURIComponent(
     new URL(req.url, "http://127.0.0.1:19000").pathname,
   );
@@ -53,6 +61,7 @@ createServer(async (req, res) => {
     writeBehavior = {
       delayMs: Math.max(0, Math.min(5000, Number(value.delayMs) || 0)),
       failWrites: Math.max(0, Math.min(10, Number(value.failWrites) || 0)),
+      readDelayMs: Math.max(0, Math.min(1000, Number(value.readDelayMs) || 0)),
     };
     res.end("ok");
     return;
@@ -113,7 +122,14 @@ createServer(async (req, res) => {
     res.setHeader("Content-Length", Buffer.byteLength(objects.get(key)));
     res.setHeader("ETag", etag(objects.get(key)));
     if (metadata.get(key)) res.setHeader("x-amz-meta-filename", metadata.get(key));
-    res.end(req.method === "HEAD" ? undefined : objects.get(key));
+    if (req.method === "GET" && key.includes("/files/") && writeBehavior.readDelayMs) {
+      const body = Buffer.from(objects.get(key));
+      for (let offset = 0; offset < body.length && !res.destroyed; offset += 64 * 1024) {
+        res.write(body.subarray(offset, offset + 64 * 1024));
+        await new Promise((resolve) => setTimeout(resolve, writeBehavior.readDelayMs));
+      }
+      res.end();
+    } else res.end(req.method === "HEAD" ? undefined : objects.get(key));
   } else {
     res.writeHead(404, { "Content-Type": "application/xml" });
     res.end(

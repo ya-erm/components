@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createWebcadBridge, readPreviewBytes, webcadEmbedUrl, webcadFormat, WEBCAD_ORIGIN, type PreviewState } from "../lib/webcad-preview";
+import { createWebcadBridge, readPreviewBytes, resolveWebcadOrigin, webcadEmbedUrl, webcadFormat, WEBCAD_ORIGIN, type PreviewState } from "../lib/webcad-preview";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { previewLabel, PreviewProgress } from "../components/WebcadPreview";
 
-function harness(download = async (_signal: AbortSignal) => new Uint8Array([1, 2, 3]).buffer) {
+function harness(download = async (_signal: AbortSignal, _onProgress: (received: number) => void) => new Uint8Array([1, 2, 3]).buffer) {
   const states: PreviewState[] = [];
   const sent: unknown[][] = [];
   const frame = { postMessage: (...args: unknown[]) => sent.push(args) } as unknown as Window;
@@ -92,4 +95,82 @@ test("file reads enforce declared size for success, oversized, empty and truncat
   await assert.rejects(readPreviewBytes(new Response(null, { status: 401 }), 1), /Сессия/);
   await assert.rejects(readPreviewBytes(new Response(null), 1), /пустой/);
   await assert.rejects(readPreviewBytes(new Response(null), 20971521), /20 МБ/);
+});
+
+test("bytes are reported per chunk; the bridge only emits increasing whole percentages", async () => {
+  const chunks = [new Uint8Array(30), new Uint8Array(30), new Uint8Array(40)];
+  const stream = new ReadableStream<Uint8Array>({ start(c) { for (const chunk of chunks) c.enqueue(chunk); c.close(); } });
+  const received: number[] = [];
+  await readPreviewBytes(new Response(stream), 100, (count) => received.push(count));
+  assert.deepEqual(received, [30, 60, 100]);
+  const h = harness(async (_signal, onProgress) => {
+    for (const count of [NaN, -1, 0, 1, 1, 0, 2, 3, Infinity]) onProgress(count);
+    return new ArrayBuffer(3);
+  });
+  try {
+    await h.handleMessage(h.message("webcad:ready"));
+    assert.deepEqual(h.states.map((state) => [state.phase, state.progress]), [
+      ["downloading", 0], ["downloading", 0.33], ["downloading", 0.66], ["downloading", 1], ["rendering", undefined],
+    ]);
+  } finally { h.dispose(); }
+});
+
+test("render progress requires the trusted source, origin, version, channel, request and phase", async () => {
+  const h = harness();
+  try {
+    await h.handleMessage(h.message("webcad:progress", { stage: "kernel" }));
+    assert.equal(h.states.length, 0);
+    await h.handleMessage(h.message("webcad:ready"));
+    const progress = h.message("webcad:progress", { stage: "kernel" });
+    for (const event of [
+      { ...progress, origin: "https://evil.example" }, { ...progress, source: {} as Window },
+      h.message("webcad:progress", { stage: "kernel", channel: "old" }),
+      h.message("webcad:progress", { stage: "kernel", version: 2 }),
+      h.message("webcad:progress", { stage: "kernel", requestId: "old" }),
+      h.message("webcad:progress", { stage: "unknown" }),
+    ]) await h.handleMessage(event);
+    assert.deepEqual(h.states.at(-1), { phase: "rendering" });
+    await h.handleMessage(progress);
+    assert.deepEqual(h.states.at(-1), { phase: "rendering", stage: "kernel" });
+    await h.handleMessage(h.message("webcad:progress", { stage: "building" }));
+    assert.deepEqual(h.states.at(-1), { phase: "rendering", stage: "building" });
+    const count = h.states.length;
+    await h.handleMessage(progress);
+    await h.handleMessage(h.message("webcad:progress", { stage: "building" }));
+    assert.equal(h.states.length, count);
+    await h.handleMessage(h.message("webcad:loaded"));
+    await h.handleMessage(progress);
+    assert.equal(h.states.at(-1)?.phase, "ready");
+  } finally { h.dispose(); }
+});
+
+test("late byte callbacks cannot replace the rendering stage or restart a closed viewer", async () => {
+  let notify!: (received: number) => void;
+  const h = harness(async (_signal, onProgress) => { notify = onProgress; return new ArrayBuffer(3); });
+  await h.handleMessage(h.message("webcad:ready"));
+  const count = h.states.length;
+  notify(2);
+  assert.equal(h.states.length, count);
+  h.dispose();
+  notify(3);
+  assert.equal(h.states.length, count);
+});
+
+test("download percentage is visible, but live label and CAD stages have no synthetic percent", () => {
+  assert.equal(previewLabel({ phase: "downloading", progress: 0.42 }), "Загружаем файл модели… 42 %");
+  assert.equal(previewLabel({ phase: "downloading", progress: 0.42 }, false), "Загружаем файл модели…");
+  assert.equal(previewLabel({ phase: "rendering", stage: "kernel" }), "WebCAD загружает геометрическое ядро…");
+  const known = renderToStaticMarkup(createElement(PreviewProgress, { state: { phase: "downloading", progress: 0.42 } }));
+  assert.match(known, /aria-valuenow="42"/);
+  assert.match(known, /width:42%/);
+  const waiting = renderToStaticMarkup(createElement(PreviewProgress, { state: { phase: "rendering", stage: "building" } }));
+  assert.ok(!waiting.includes("aria-valuenow"));
+  assert.match(waiting, /motion-reduce:animate-none/);
+});
+
+test("local viewer origin is opt-in, development-only and restricted to loopback", () => {
+  assert.equal(resolveWebcadOrigin("http://localhost:5173", true), "http://localhost:5173");
+  assert.equal(resolveWebcadOrigin("http://localhost:5173", false), "https://cad.ya-erm.ru");
+  for (const value of ["https://evil.example", "http://localhost:5173/", "http://localhost.evil:5173", "invalid"])
+    assert.equal(resolveWebcadOrigin(value, true), "https://cad.ya-erm.ru");
 });

@@ -38,7 +38,7 @@ export const agentApi = {
   models: {
     Component: { id: "string", createdAt: "ISO datetime", updatedAt: "ISO datetime", data: "ComponentData" },
     ComponentData: {
-      attachments: "Attachment[], max 30; default []; private files downloaded via /api/files/{id}",
+      attachments: "Attachment[], max 30; default []; order is preserved, first supported 3D file is the default for quick preview; private files downloaded via /api/files/{id}",
       name: "required string, 1–200 chars", images: "URL[], max 10; first is the main image; default []",
       type: "optional string, max 60; custom types allowed", tags: "string[], max 30 tags, each 1–30 chars; deduplicated case-insensitively",
       note: "optional string, max 2000", url: "optional URL",

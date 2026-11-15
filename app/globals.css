@@ -91,6 +91,11 @@ body::before {
 .project-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .project-markdown th, .project-markdown td { border: 1px solid var(--color-border); padding: 0.4rem 0.6rem; }
 
+@keyframes webcad-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
 @keyframes ptr-ios-spinner-fade {
   0% {
     opacity: 0.66;

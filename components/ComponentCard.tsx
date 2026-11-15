@@ -28,8 +28,8 @@ export function ComponentCard({
   const compact = variant === "compact";
 
   const className = compact
-    ? "group flex w-full flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-left transition active:scale-[0.99]"
-    : "group flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-left transition active:scale-[0.99]";
+    ? "group flex h-full w-full flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-left transition active:scale-[0.99]"
+    : "group flex h-full w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-left transition active:scale-[0.99]";
   const content = (
     <>
       <div className="relative aspect-square w-full bg-[var(--color-surface-2)]">
@@ -50,7 +50,6 @@ export function ComponentCard({
             <NoImageIcon className="size-[50%]" />
           </div>
         )}
-        <ModelBadge files={item.data.attachments} compact={compact} />
         {onSelect && selected !== undefined ? (
           <span
             aria-hidden="true"
@@ -127,9 +126,7 @@ export function ComponentCard({
       </div>
     </>
   );
-  if (readOnly) return <div className={className}>{content}</div>;
-  if (onSelect)
-    return (
+  const card = readOnly ? <div className={className}>{content}</div> : onSelect ? (
       <button
         type="button"
         aria-label={`${selected ? "Убрать" : "Выбрать"} ${item.data.name}`}
@@ -139,8 +136,7 @@ export function ComponentCard({
       >
         {content}
       </button>
-    );
-  return (
+    ) : (
     <Link
       href={`/components/${item.id}`}
       target={newTab ? "_blank" : undefined}
@@ -150,6 +146,8 @@ export function ComponentCard({
       {content}
     </Link>
   );
+  // The preview button is a sibling of the card link/selection button.
+  return <div className="relative min-w-0">{card}<ModelBadge files={item.data.attachments} compact={compact} name={item.data.name} /></div>;
 }
 
 export function NoImageIcon({ className }: { className?: string }) {

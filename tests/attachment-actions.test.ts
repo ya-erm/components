@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { changeAttachment, mergeAttachmentDraft } from "../lib/attachment-actions";
+import { changeAttachment, mergeAttachmentDraft, mergeReorderedAttachments, reorderAttachments } from "../lib/attachment-actions";
 import { ModelBadge } from "../components/ModelBadge";
+import { ComponentCard } from "../components/ComponentCard";
+import { componentDataSchema } from "../lib/schema";
+import { modelAttachments } from "../lib/webcad-preview";
 import type { Attachment } from "../lib/schema";
 
 const file = (id: string, name = `${id}.step`): Attachment => ({ id, name, size: 10, contentType: "application/octet-stream", createdAt: "2026-11-15T12:00:00.000Z" });
@@ -60,4 +63,38 @@ test("model cube badge uses supported attachments, never arbitrary JSON or photo
     assert.ok(renderToStaticMarkup(createElement(ModelBadge, { files: [file("a", name)] })).includes("Есть 3D-модель"));
   for (const name of ["a.json", "a.pdf", "a.png", "a.step.zip"])
     assert.equal(renderToStaticMarkup(createElement(ModelBadge, { files: [file("a", name)] })), "");
+});
+
+test("reordering rebases on conflicts, retaining new server files and dropping removed references", async () => {
+  let files = [a, b];
+  let version = 1;
+  let patches = 0;
+  const request = (async (_url: unknown, init?: RequestInit) => {
+    const item = () => ({ data: { name: "Saved", note: "Saved note", attachments: files } });
+    if (!init?.method) return Response.json(item(), { headers: { ETag: `W/"${version}"` } });
+    assert.equal(init.method, "PATCH");
+    assert.equal((init.headers as Record<string, string>)["If-Match"], `W/"${version}"`);
+    const body = JSON.parse(init.body as string);
+    assert.deepEqual(Object.keys(body.data), ["attachments"]);
+    if (++patches === 1) { files = [c, b]; version++; return Response.json({}, { status: 409 }); }
+    files = body.data.attachments;
+    return Response.json(item());
+  }) as typeof fetch;
+  const saved = await reorderAttachments("component", [b.id, a.id], request);
+  assert.deepEqual(saved.data.attachments, [b, c]);
+  assert.equal(saved.data.note, "Saved note");
+  assert.deepEqual(modelAttachments(saved.data.attachments)[0], b);
+  const merged = mergeReorderedAttachments([draft, b, a], [a, b], [b, c]);
+  assert.deepEqual(merged, [draft, b, c]);
+  assert.equal(patches, 2);
+});
+
+test("quick preview is a separate button outside card navigation or selection", () => {
+  const item = { id: "component", data: componentDataSchema.parse({ name: "Model", attachments: [{ ...a, id: "11111111-1111-4111-8111-111111111111" }] }), createdAt: a.createdAt, updatedAt: a.createdAt };
+  const link = renderToStaticMarkup(createElement(ComponentCard, { item }));
+  assert.ok(link.includes('aria-label="Посмотреть 3D-модель: Model"'));
+  assert.ok(!/<a\b[^>]*>[\s\S]*?<button\b[\s\S]*?<\/a>/.test(link), "No button may be nested in the card link");
+  const selection = renderToStaticMarkup(createElement(ComponentCard, { item, onSelect() {}, selected: true }));
+  for (const button of selection.match(/<button\b[\s\S]*?<\/button>/g) ?? [])
+    assert.equal((button.match(/<button\b/g) ?? []).length, 1, "No nested selection / preview buttons");
 });

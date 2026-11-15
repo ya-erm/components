@@ -4,7 +4,9 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type Attachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_SIZE } from "@/lib/schema";
 import type { ComponentDTO } from "@/lib/components-repo";
-import { changeAttachment, mergeAttachmentDraft } from "@/lib/attachment-actions";
+import { changeAttachment, mergeAttachmentDraft, mergeReorderedAttachments, reorderAttachments } from "@/lib/attachment-actions";
+import { modelAttachments } from "@/lib/webcad-preview";
+import { SortableList } from "./SortableList";
 import { Button } from "./ui/Button";
 import { AttachmentSectionHeader, attachmentSectionClass } from "./AttachmentSectionHeader";
 import { WebcadPreview } from "./WebcadPreview";
@@ -22,6 +24,30 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
   const [error, setError] = useState("");
   const busy = useRef(false);
   const [undo, setUndo] = useState<{ file: Attachment; index: number; persisted: boolean }[]>([]);
+  const defaultModelId = modelAttachments(value)[0]?.id;
+
+  async function reorder(next: Attachment[]) {
+    if (busy.current) return;
+    busy.current = true;
+    setUploading(true);
+    onUploadingChange(true);
+    setError("");
+    onChange(next);
+    try {
+      if (componentId) {
+        const item = await reorderAttachments(componentId, next.map((file) => file.id));
+        onChange(mergeReorderedAttachments(next, savedValue, item.data.attachments ?? []));
+        onPersisted?.(item);
+      }
+    } catch (error) {
+      onChange(value);
+      setError(error instanceof Error ? error.message : "Не удалось сохранить порядок файлов.");
+    } finally {
+      busy.current = false;
+      setUploading(false);
+      onUploadingChange(false);
+    }
+  }
 
   async function remove(file: Attachment) {
     if (busy.current) return;
@@ -126,19 +152,21 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
       </summary>
       <div className="mt-3 flex flex-col gap-3">
       <input ref={input} type="file" multiple className="sr-only" aria-label="Прикрепить файлы" disabled={uploading} onChange={(event) => upload(Array.from(event.target.files ?? []))} />
-      <ul className="flex flex-col gap-2">
-        {value.map((file) => (
-          <li key={file.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] p-3">
-            <a href={`/api/files/${file.id}`} className="min-w-0 flex-1 basis-40 break-words text-sm text-[var(--color-accent)]">
+      <SortableList items={value} compact disabled={uploading} label="Файлы компонента" getLabel={(file) => file.name} onReorder={(next) => void reorder(next)}>
+        {(file, handle) => (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
+            {handle}
+            <a href={`/api/files/${file.id}`} className="min-w-0 flex-1 basis-32 break-words text-sm text-[var(--color-accent)]">
               {file.name}<span className="ml-2 text-xs text-[var(--color-muted)]">{Math.max(1, Math.ceil(file.size / 1024))} КБ · Скачать</span>
+              {file.id === defaultModelId ? <span className="mt-1 block text-[11px] text-[var(--color-muted)]">3D по умолчанию</span> : null}
             </a>
-            <WebcadPreview file={file} />
+            <WebcadPreview file={file} files={value} />
             <Button type="button" variant="ghost" className="size-10 shrink-0 !p-0 !text-red-500 hover:bg-red-500/10 hover:!text-red-600" disabled={uploading} aria-label={`Удалить файл ${file.name}`} title="Удалить файл" onClick={() => void remove(file)}>
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-[18px]"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
             </Button>
-          </li>
-        ))}
-      </ul>
+          </div>
+        )}
+      </SortableList>
       <Button type="button" variant="secondary" disabled={uploading || value.length >= MAX_ATTACHMENTS} onClick={() => input.current?.click()}>{uploading ? "Сохраняем…" : "Прикрепить файлы"}</Button>
       </div>
     </details>
