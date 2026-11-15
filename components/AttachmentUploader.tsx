@@ -5,11 +5,11 @@ import { createPortal } from "react-dom";
 import { type Attachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_SIZE } from "@/lib/schema";
 import type { ComponentDTO } from "@/lib/components-repo";
 import { changeAttachment, mergeAttachmentDraft, mergeReorderedAttachments, reorderAttachments } from "@/lib/attachment-actions";
-import { modelAttachments } from "@/lib/webcad-preview";
 import { SortableList } from "./SortableList";
 import { Button } from "./ui/Button";
 import { AttachmentSectionHeader, attachmentSectionClass } from "./AttachmentSectionHeader";
 import { WebcadPreview } from "./WebcadPreview";
+import { DownloadIcon } from "./AttachmentDownload";
 
 export function AttachmentUploader({ value, savedValue = [], componentId, onPersisted, onChange, onUploadingChange }: {
   value: Attachment[];
@@ -24,7 +24,6 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
   const [error, setError] = useState("");
   const busy = useRef(false);
   const [undo, setUndo] = useState<{ file: Attachment; index: number; persisted: boolean }[]>([]);
-  const defaultModelId = modelAttachments(value)[0]?.id;
 
   async function reorder(next: Attachment[]) {
     if (busy.current) return;
@@ -156,9 +155,8 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
         {(file, handle) => (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
             {handle}
-            <a href={`/api/files/${file.id}`} className="min-w-0 flex-1 basis-32 break-words text-sm text-[var(--color-accent)]">
-              {file.name}<span className="ml-2 text-xs text-[var(--color-muted)]">{Math.max(1, Math.ceil(file.size / 1024))} КБ · Скачать</span>
-              {file.id === defaultModelId ? <span className="mt-1 block text-[11px] text-[var(--color-muted)]">3D по умолчанию</span> : null}
+            <a href={`/api/files/${file.id}`} title={`Скачать ${file.name}`} className="min-w-0 flex-1 basis-32 break-words text-sm text-[var(--color-accent)]">
+              {file.name}<span className="ml-2 inline-flex items-center gap-1 text-xs text-[var(--color-muted)]">{Math.max(1, Math.ceil(file.size / 1024))} КБ<DownloadIcon className="size-3.5" /></span>
             </a>
             <WebcadPreview file={file} files={value} />
             <Button type="button" variant="ghost" className="size-10 shrink-0 !p-0 !text-red-500 hover:bg-red-500/10 hover:!text-red-600" disabled={uploading} aria-label={`Удалить файл ${file.name}`} title="Удалить файл" onClick={() => void remove(file)}>

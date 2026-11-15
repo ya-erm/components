@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Attachment } from "@/lib/schema";
 import { createWebcadBridge, modelAttachments, readPreviewBytes, webcadEmbedUrl, webcadFormat, type PreviewState } from "@/lib/webcad-preview";
 import { Button, buttonClass } from "./ui/Button";
+import { AttachmentDownload } from "./AttachmentDownload";
 
 const phaseLabels = {
   connecting: "Подключаем WebCAD…",
@@ -58,11 +59,11 @@ function PreviewDialog({ file, models, onSelect, onClose }: { file: Attachment; 
       <div className="flex h-full flex-col">
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
           <div className="min-w-0 flex-1"><h2 id={titleId} className="truncate text-sm font-semibold" title={file.name}>{file.name}</h2><p className="text-xs text-[var(--color-muted)]">3D-просмотр · WebCAD</p></div>
-          <a href={`/api/files/${file.id}`} className={buttonClass("ghost", "px-3 text-xs")}>Скачать</a>
+          <AttachmentDownload file={file} />
           <Button type="button" variant="secondary" onClick={onClose} data-preview-close>Закрыть</Button>
           {models.length > 1 ? <label className="flex w-full min-w-0 items-center gap-3 text-xs text-[var(--color-muted)]">
             <span className="shrink-0">Модель</span><select aria-label="3D-модель" value={file.id} onChange={(event) => onSelect(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]">
-              {models.map((model, index) => <option key={model.id} value={model.id}>{model.name}{index === 0 ? " · по умолчанию" : ""}</option>)}
+              {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
             </select>
           </label> : null}
         </header>
