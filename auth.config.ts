@@ -6,7 +6,7 @@ import type { NextAuthConfig } from "next-auth";
  */
 
 // Страницы и эндпоинты, доступные без авторизации.
-const PUBLIC_PATHS = ["/login", "/register", "/api/register"];
+const PUBLIC_PATHS = ["/login", "/register", "/api/register", "/docs/api"];
 // Страницы входа/регистрации, с которых авторизованного редиректим в каталог.
 const AUTH_PAGES = ["/login", "/register"];
 const API_PATHS = ["/api/components", "/api/projects", "/api/logistics", "/api/upload", "/api/images/download", "/api/agent", "/api/settings/tokens", "/api/files"];

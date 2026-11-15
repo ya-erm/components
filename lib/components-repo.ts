@@ -159,7 +159,9 @@ export async function patchComponent(ownerId: string, id: string, patch: Record<
     const index = catalog.items.findIndex((item) => item.id === id);
     if (index === -1) return null;
     const item = catalog.items[index];
-    if (expectedVersion && expectedVersion !== JSON.stringify(item.updatedAt))
+    // Hosting may weaken the response ETag when compressing JSON. Both forms
+    // identify the same catalog version for this API's optimistic lock.
+    if (expectedVersion && expectedVersion.replace(/^W\//, "") !== JSON.stringify(item.updatedAt))
       throw new ProjectConflictError("Компонент изменился. Прочитайте его заново.");
     const data = componentDataSchema.parse({ ...item.data, ...patch });
     const updatedAt = new Date(Math.max(Date.now(), Date.parse(item.updatedAt) + 1)).toISOString();

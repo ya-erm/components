@@ -53,7 +53,7 @@ export function ApiTokens({ initialTokens }: { initialTokens: ApiTokenInfo[] }) 
         Токен даёт агенту полный доступ к вашему каталогу: чтение, изменение и удаление,
         заказы, проекты, изображения и импорт. Его можно отозвать в любой момент.
       </p>
-      <a href="/api/agent" target="_blank" rel="noreferrer" className="text-sm text-[var(--color-accent)]">Документация API для агентов ↗</a>
+      <a href="/docs/api" target="_blank" rel="noreferrer" className="text-sm text-[var(--color-accent)]">Документация API для людей и агентов ↗</a>
       <form onSubmit={create} className="flex flex-col gap-3">
         <Field label="Название токена" htmlFor="token-name">
           <Input id="token-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Например, Codex" required maxLength={100} disabled={busy} />
