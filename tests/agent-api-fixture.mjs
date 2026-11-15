@@ -31,6 +31,26 @@ const issue = async (name) => {
   return response.json();
 };
 const token = await issue("Agent API QA");
+const datedRename = await session("/api/settings/tokens", { method: "PATCH", ...json({ id: token.id, name: "Renamed dated QA" }) });
+assert.equal(datedRename.status, 200);
+assert.equal((await datedRename.json()).expiresAt, token.expiresAt);
+const permanentResponse = await session("/api/settings/tokens", { method: "POST", ...json({ name: "Permanent QA", expiresInDays: null }) });
+assert.equal(permanentResponse.status, 201);
+const permanent = await permanentResponse.json();
+assert.equal(permanent.expiresAt, null);
+assert.equal((await session("/api/settings/tokens", { method: "POST", ...json({ name: "Invalid expiry", expiresInDays: 0 }) })).status, 400);
+const renamed = await session("/api/settings/tokens", { method: "PATCH", ...json({ id: permanent.id, name: "Renamed permanent QA" }) });
+assert.equal(renamed.status, 200);
+const renamedInfo = await renamed.json();
+assert.equal(renamedInfo.name, "Renamed permanent QA");
+assert.equal(renamedInfo.expiresAt, null);
+assert.equal(renamedInfo.id, permanent.id);
+assert.equal(renamedInfo.prefix, permanent.prefix);
+assert.equal(renamedInfo.createdAt, permanent.createdAt);
+assert.ok(!("token" in renamedInfo) && !("hash" in renamedInfo));
+assert.equal((await session("/api/settings/tokens", { method: "PATCH", ...json({ id: permanent.id, name: " " }) })).status, 400);
+assert.equal((await session("/api/settings/tokens", { method: "PATCH", ...json({ id: permanent.id, name: "Keep expiry", expiresAt: "2000-01-01" }) })).status, 400);
+assert.equal((await session("/api/settings/tokens", { method: "PATCH", ...json({ id: permanent.id, name: "CSRF" }), headers: { Origin: "https://attacker.example", "Content-Type": "application/json" } })).status, 401);
 const api = (path, options = {}, bearer = token.token) => fetch(base + path, {
   ...options, redirect: "manual", headers: { Authorization: `Bearer ${bearer}`, ...options.headers },
 });
@@ -39,6 +59,8 @@ const read = async (path) => {
   assert.equal(response.status, 200, path);
   return response.json();
 };
+assert.equal((await api("/api/components", {}, permanent.token)).status, 200);
+assert.equal((await api("/api/settings/tokens", { method: "PATCH", ...json({ id: permanent.id, name: "Agent rename" }) })).status, 401);
 const write = (path, body, method = "PATCH", headers = {}) => api(path, { method, ...json(body), headers: { "Content-Type": "application/json", ...headers } });
 
 assert.equal((await fetch(base + "/api/components", { redirect: "manual" })).status, 401);
@@ -48,6 +70,7 @@ assert.equal((await fetch(base + "/settings", { redirect: "manual" })).status, 3
 assert.equal((await api("/api/settings/tokens")).status, 401);
 assert.equal((await session("/api/settings/tokens", { method: "POST", ...json({ name: "CSRF" }), headers: { Origin: "https://attacker.example", "Content-Type": "application/json" } })).status, 401);
 const listed = await (await session("/api/settings/tokens")).json();
+assert.ok(listed.some((entry) => entry.id === permanent.id && entry.expiresAt === null && entry.name === "Renamed permanent QA"));
 assert.ok(listed.some((entry) => entry.id === token.id));
 assert.ok(!JSON.stringify(listed).includes(token.token));
 assert.ok(!JSON.stringify(listed).includes('"hash"'));
@@ -128,9 +151,9 @@ assert.deepEqual((await read(path)).data.attachments, attachments);
 const componentHtml = await (await session(`/components/${component.id}`)).text();
 assert.ok(componentHtml.includes("Прикрепить файлы"));
 for (const name of ["part.step", "model.stl", "project.webcad.json", "20MB-model.stl"])
-  assert.ok(componentHtml.includes(`Посмотреть 3D: ${name}`));
+  assert.ok(componentHtml.includes(`Посмотреть: ${name}`));
 for (const name of ["Чертёж.pdf", "sources.zip"])
-  assert.ok(!componentHtml.includes(`Посмотреть 3D: ${name}`));
+  assert.ok(!componentHtml.includes(`Посмотреть: ${name}`));
 assert.equal((await api("/api/files/not-a-uuid")).status, 404);
 assert.equal((await fetch(base + `/api/files/${attachments[0].id}`, { redirect: "manual" })).status, 401);
 const oversized = new FormData();
@@ -169,6 +192,7 @@ try {
   assert.deepEqual(conditional.map((response) => response.status).sort(), [200, 409]);
   const issued = await Promise.all([issue("Concurrent A"), issue("Concurrent B")]);
   const all = await (await session("/api/settings/tokens")).json();
+  assert.ok(all.some((entry) => entry.id === permanent.id));
   for (const entry of issued) {
     assert.ok(all.some((item) => item.id === entry.id));
     assert.equal((await api("/api/components", {}, entry.token)).status, 200);
@@ -199,6 +223,7 @@ assert.equal((await fetch(base + "/api/register", { method: "POST", ...json({ lo
 const otherCsrf = await (await session("/api/auth/csrf")).json();
 await session("/api/auth/callback/credentials", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ csrfToken: otherCsrf.csrfToken, login, password: "test-password-123" }) });
 const other = await issue("Other owner");
+assert.equal((await session("/api/settings/tokens", { method: "PATCH", ...json({ id: permanent.id, name: "Wrong owner" }) })).status, 404);
 assert.equal((await api(path, {}, other.token)).status, 404);
 assert.equal((await api(path, { method: "PATCH", ...json({ data: { note: "attack" } }) }, other.token)).status, 404);
 assert.equal((await api(path, { method: "DELETE" }, other.token)).status, 404);
@@ -214,6 +239,8 @@ latest.tokens.find((entry) => entry.id === expiring.id).expiresAt = "2000-01-01T
 await fetch(storageKey, { method: "PUT", body: JSON.stringify(latest) });
 assert.equal((await api("/api/components", {}, expiring.token)).status, 401);
 assert.equal((await api(path, { method: "DELETE" })).status, 200);
+assert.equal((await session(`/api/settings/tokens?id=${permanent.id}`, { method: "DELETE" })).status, 200);
+assert.equal((await api("/api/components", {}, permanent.token)).status, 401);
 assert.equal((await session(`/api/settings/tokens?id=${token.id}`, { method: "DELETE" })).status, 200);
 assert.equal((await api("/api/components")).status, 401);
 console.log("Agent API passed: token lifecycle/hash/CSRF, owner isolation, CRUD/ETag/concurrent writes, projects, private PDF/STEP/STL/ZIP round trip, file limits, images, AliExpress, import/export and settings rendering.");

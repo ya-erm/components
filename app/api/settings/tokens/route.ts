@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
-import { createApiToken, listApiTokens, revokeApiToken, tokenInputSchema, TokenConflictError } from "@/lib/api-tokens";
+import { createApiToken, listApiTokens, renameApiToken, revokeApiToken, tokenInputSchema, tokenRenameSchema, TokenConflictError } from "@/lib/api-tokens";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const ownerId = await sessionOwner(req, true);
   if (!ownerId) return NextResponse.json({ error: "Требуется сессия и запрос из настроек" }, { status: 401 });
   const input = tokenInputSchema.safeParse(await req.json().catch(() => null));
-  if (!input.success) return NextResponse.json({ error: "Укажите название и срок от 1 до 365 дней" }, { status: 400 });
+  if (!input.success) return NextResponse.json({ error: "Укажите название и срок от 1 до 365 дней либо бессрочный токен" }, { status: 400 });
   try {
     return NextResponse.json(await createApiToken(ownerId, input.data), {
       status: 201, headers: { "Cache-Control": "no-store" },
@@ -40,6 +40,20 @@ export async function DELETE(req: Request) {
   try {
     const found = await revokeApiToken(ownerId, id);
     return NextResponse.json(found ? { ok: true } : { error: "Токен не найден" }, { status: found ? 200 : 404 });
+  } catch (error) {
+    if (error instanceof TokenConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
+}
+
+export async function PATCH(req: Request) {
+  const ownerId = await sessionOwner(req, true);
+  if (!ownerId) return NextResponse.json({ error: "Требуется сессия и запрос из настроек" }, { status: 401 });
+  const input = tokenRenameSchema.safeParse(await req.json().catch(() => null));
+  if (!input.success) return NextResponse.json({ error: "Укажите id токена и название от 1 до 100 символов" }, { status: 400 });
+  try {
+    const token = await renameApiToken(ownerId, input.data);
+    return NextResponse.json(token ?? { error: "Токен не найден" }, { status: token ? 200 : 404, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof TokenConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
     throw error;

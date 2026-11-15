@@ -64,14 +64,14 @@ function PreviewDialog({ file, onClose }: { file: Attachment; onClose: () => voi
           <a href={`/api/files/${file.id}`} className={buttonClass("ghost", "px-3 text-xs")}>Скачать</a>
           <Button type="button" variant="secondary" onClick={onClose} data-preview-close>Закрыть</Button>
         </header>
-        <p role="status" aria-live="polite" className="shrink-0 px-4 py-2 text-xs text-[var(--color-muted)]">{phaseLabels[state.phase]}</p>
+        {state.phase !== "ready" ? <p role="status" aria-live="polite" className="shrink-0 px-4 py-2 text-xs text-[var(--color-muted)]">{phaseLabels[state.phase]}</p> : null}
         <div className="relative min-h-0 flex-1">
           {src && state.phase !== "error" ? <iframe key={src} ref={frame} src={src} title={`3D-модель ${file.name}`} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" tabIndex={state.phase === "ready" ? 0 : -1} className={`h-full w-full border-0 ${state.phase === "ready" ? "visible" : "invisible"}`} /> : null}
           {state.phase !== "ready" ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[var(--color-bg)] p-6 text-center">
             {state.phase === "error" ? <>
               <p className="max-w-md text-sm" role="alert">{state.error}</p>
               <div className="flex flex-wrap justify-center gap-3"><Button type="button" variant="secondary" onClick={() => setAttempt((value) => value + 1)}>Повторить</Button><a href={`/api/files/${file.id}`} className={buttonClass("ghost")}>Скачать исходник</a></div>
-            </> : <><span aria-hidden="true" className="size-7 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)] motion-reduce:animate-none" /><p className="text-sm text-[var(--color-muted)]">{phaseLabels[state.phase]}</p><p className="max-w-sm text-xs text-[var(--color-muted)]">Первый запуск может занять немного времени: CAD загружает геометрическое ядро.</p></>}
+            </> : <><span aria-hidden="true" className="size-7 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)] motion-reduce:animate-none" /><p className="text-sm text-[var(--color-muted)]">{phaseLabels[state.phase]}</p><p className="max-w-sm text-xs text-[var(--color-muted)]">Первый запуск может занять некоторое время</p></>}
           </div> : null}
         </div>
       </div>
@@ -83,7 +83,7 @@ export function WebcadPreview({ file }: { file: Attachment }) {
   const [open, setOpen] = useState(false);
   if (!webcadFormat(file.name)) return null;
   return <>
-    <Button type="button" variant="secondary" className="shrink-0 px-3 text-xs" onClick={() => setOpen(true)} aria-label={`Посмотреть 3D: ${file.name}`}>Посмотреть 3D</Button>
+    <Button type="button" variant="secondary" className="shrink-0 px-3 text-xs" onClick={() => setOpen(true)} aria-label={`Посмотреть: ${file.name}`}>Посмотреть</Button>
     {open ? <PreviewDialog file={file} onClose={() => setOpen(false)} /> : null}
   </>;
 }

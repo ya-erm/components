@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { AppHeader, BackLink } from "@/components/AppHeader";
 import { CachedComponentPreview } from "@/components/CachedComponentPreview";
+import { AttachmentSectionHeader, attachmentSectionClass } from "@/components/AttachmentSectionHeader";
 import { controlClass } from "@/components/ui/Field";
 import { BASE as buttonBase } from "@/components/ui/Button";
 import { CloseComponentModal } from "@/components/ComponentModal";
@@ -98,6 +99,10 @@ export function ComponentLoading({ modal = false }: { modal?: boolean }) {
                 ))}
               </ul>
             </div>
+          </div>
+
+          <div className={attachmentSectionClass}>
+            <AttachmentSectionHeader />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

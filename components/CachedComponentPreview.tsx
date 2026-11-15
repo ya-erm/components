@@ -1,6 +1,7 @@
 import Image from "next/image";
 import type { ComponentData } from "@/lib/schema";
 import { InventorySummary } from "@/components/InventorySummary";
+import { AttachmentSectionHeader, attachmentSectionClass } from "@/components/AttachmentSectionHeader";
 import { OrderSummaryBadges } from "@/components/OrderSummaryBadges";
 import { StatusIcon } from "@/components/StatusIcon";
 import { BASE as buttonBase } from "@/components/ui/Button";
@@ -45,6 +46,10 @@ export function CachedComponentPreview({ data }: { data: ComponentData }) {
             </li>
           </ul>
         </div>
+      </div>
+
+      <div className={attachmentSectionClass}>
+        <AttachmentSectionHeader count={data.attachments?.length ?? 0} />
       </div>
 
       <Field label="Тип" hint="Выберите или введите свой">

@@ -30,7 +30,7 @@ import {
   logisticsPatch,
 } from "@/components/ComponentLedgerEditor";
 import { Spinner } from "@/components/ui/states";
-import { componentReturnTarget, saveComponentInBackground, updateSavedComponent } from "@/lib/component-list-state";
+import { componentReturnTarget, saveComponentInBackground, updateSavedComponent, notifyComponentSaved } from "@/lib/component-list-state";
 
 const FORM_ID = "component-form";
 
@@ -127,6 +127,7 @@ export function ComponentForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [images, setImages] = useState<string[]>(initial?.images ?? []);
   const [attachments, setAttachments] = useState(initial?.attachments ?? []);
+  const [savedAttachments, setSavedAttachments] = useState(initial?.attachments ?? []);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [inventoryValue, setInventoryValue] = useState({
     inventory: initial?.inventory ?? [],
@@ -150,7 +151,7 @@ export function ComponentForm({
     () =>
       toSnapshot({
         data: toComponentPayload({
-          attachments: initial?.attachments ?? [],
+          attachments: savedAttachments,
           name: initial?.name ?? "",
           images: initial?.images ?? [],
           inventory: initial?.inventory ?? [],
@@ -165,7 +166,7 @@ export function ComponentForm({
         }),
         logistics: { orders: [], shipments: [] },
       }),
-    [initial],
+    [initial, savedAttachments],
   );
   const candidate = {
     data: toComponentPayload({
@@ -344,7 +345,9 @@ export function ComponentForm({
           </div>
 
           <div>
-            <AttachmentUploader value={attachments} onChange={setAttachments} onUploadingChange={setUploadingFiles} />
+            <AttachmentUploader value={attachments} savedValue={savedAttachments} componentId={onSaveDraft ? undefined : id}
+              onChange={setAttachments} onUploadingChange={setUploadingFiles}
+              onPersisted={(item) => { setSavedAttachments(item.data.attachments ?? []); notifyComponentSaved(item); }} />
             {errors.attachments ? <p className="mt-1.5 text-sm text-red-400">{errors.attachments}</p> : null}
           </div>
 

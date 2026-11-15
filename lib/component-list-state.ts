@@ -22,6 +22,11 @@ export function notifyComponentDeleted(id: string) {
   emitListUpdate({ type: "deleted", id });
 }
 
+export function notifyComponentSaved(item: ComponentDTO) {
+  updateSavedComponent(item);
+  emitListUpdate({ type: "saved", id: item.id, item });
+}
+
 export function saveComponentInBackground(id: string, payload: ComponentSavePayload) {
   emitListUpdate({ type: "saving", id, data: payload.data });
   void (async () => {

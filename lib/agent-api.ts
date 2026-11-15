@@ -6,7 +6,7 @@ export const agentApi = {
     header: "Authorization: Bearer <token>",
     issueAt: "/settings",
     permissions: "Full read/write/delete access to the token owner's data only. Token management requires a browser session.",
-    expires: "1–365 days (90 by default). Revocation is immediate for subsequent requests.",
+    expires: "1–365 days (90 by default), or no expiration when explicitly selected in settings. Revocation is immediate for subsequent requests. Tokens can be renamed in settings without changing their secret or expiration.",
     invalidToken: "401 JSON; an invalid Authorization header never falls back to a session. No tokens in URLs.",
   },
   endpoints: [

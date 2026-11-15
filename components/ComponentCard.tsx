@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ComponentDTO } from "@/lib/components-repo";
 import { mainImage } from "@/lib/schema";
 import { InventorySummary } from "@/components/InventorySummary";
+import { ModelBadge } from "@/components/ModelBadge";
 
 export function ComponentCard({
   item,
@@ -49,6 +50,7 @@ export function ComponentCard({
             <NoImageIcon className="size-[50%]" />
           </div>
         )}
+        <ModelBadge files={item.data.attachments} compact={compact} />
         {onSelect && selected !== undefined ? (
           <span
             aria-hidden="true"
