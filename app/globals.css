@@ -70,6 +70,26 @@ body::before {
   overflow: hidden;
 }
 
+.photo-carousel-controls {
+  display: none;
+}
+
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  .photo-carousel-controls {
+    display: flex;
+  }
+
+  .photo-carousel:hover .photo-carousel-controls,
+  .photo-carousel:focus-within .photo-carousel-controls {
+    opacity: 1;
+  }
+
+  .photo-carousel:hover .photo-carousel-controls button,
+  .photo-carousel:focus-within .photo-carousel-controls button {
+    pointer-events: auto;
+  }
+}
+
 .ptr-ios-spinner-segment-active {
   animation: ptr-ios-spinner-fade 0.8s linear infinite;
 }

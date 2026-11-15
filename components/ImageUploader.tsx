@@ -17,6 +17,8 @@ export function ImageUploader({
   onUploadingChange?: (uploading: boolean) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [carouselScroll, setCarouselScroll] = useState({ previous: false, next: false });
   const viewerScrollerRef = useRef<HTMLDivElement>(null);
   const viewerThumbsRef = useRef<HTMLDivElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -39,6 +41,40 @@ export function ImageUploader({
   const canAdd = value.length < MAX_IMAGES;
   const canGoPrev = viewerIndex != null && viewerIndex > 0;
   const canGoNext = viewerIndex != null && viewerIndex < value.length - 1;
+
+  useEffect(() => {
+    const scroller = carouselRef.current;
+    if (!scroller) return;
+
+    function updateScroll() {
+      if (!scroller) return;
+      const previous = scroller.scrollLeft > 1;
+      const next = scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 1;
+      setCarouselScroll((current) =>
+        current.previous === previous && current.next === next ? current : { previous, next },
+      );
+    }
+
+    updateScroll();
+    const observer = new ResizeObserver(updateScroll);
+    observer.observe(scroller);
+    scroller.addEventListener("scroll", updateScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("scroll", updateScroll);
+    };
+  }, [value.length]);
+
+  function scrollCarousel(direction: -1 | 1) {
+    const scroller = carouselRef.current;
+    const photos = scroller?.querySelectorAll("li");
+    if (!scroller || !photos || photos.length < 2) return;
+
+    scroller.scrollBy({
+      left: direction * (photos[1].offsetLeft - photos[0].offsetLeft),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }
 
   useEffect(() => {
     if (viewerIndex == null && deleteIndex == null) return;
@@ -386,42 +422,66 @@ export function ImageUploader({
         onChange={(e) => handleFiles(Array.from(e.target.files ?? []))}
       />
 
-      <div className="h-32 overflow-x-auto rounded-xl sm:h-36">
-        <ul className="flex h-full min-w-0 gap-2 pb-1">
-          {value.map((url, i) => (
-            <li
-              key={`${url}-${i}`}
-              className="relative aspect-square h-full shrink-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
-            >
+      <div className="photo-carousel relative">
+        <div ref={carouselRef} className="h-32 overflow-x-auto rounded-xl sm:h-36">
+          <ul className="flex h-full min-w-0 gap-2 pb-1">
+            {value.map((url, i) => (
+              <li
+                key={`${url}-${i}`}
+                className="relative aspect-square h-full shrink-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]"
+              >
+                <button
+                  type="button"
+                  onClick={() => openViewer(i)}
+                  className="relative block h-full w-full"
+                  aria-label={`Открыть фото ${i + 1}`}
+                >
+                  <Image
+                    src={url}
+                    alt=""
+                    fill
+                    sizes="144px"
+                    className="object-cover"
+                  />
+                </button>
+              </li>
+            ))}
+
+            <li className="aspect-square h-full shrink-0">
               <button
                 type="button"
-                onClick={() => openViewer(i)}
-                className="relative block h-full w-full"
-                aria-label={`Открыть фото ${i + 1}`}
+                onClick={openInput}
+                disabled={uploading || !canAdd}
+                aria-label="Добавить фото"
+                className="flex h-full w-full items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-muted)] transition hover:text-[var(--color-fg)] disabled:opacity-50"
               >
-                <Image
-                  src={url}
-                  alt=""
-                  fill
-                  sizes="144px"
-                  className="object-cover"
-                />
+                {uploading ? <Spinner /> : <PlusIcon className="size-7" />}
               </button>
             </li>
-          ))}
-
-          <li className="aspect-square h-full shrink-0">
+          </ul>
+        </div>
+        {value.length >= 4 && (carouselScroll.previous || carouselScroll.next) ? (
+          <div className="photo-carousel-controls pointer-events-none absolute -inset-x-4 inset-y-0 items-center justify-between opacity-0 transition-opacity">
             <button
               type="button"
-              onClick={openInput}
-              disabled={uploading || !canAdd}
-              aria-label="Добавить фото"
-              className="flex h-full w-full items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-muted)] transition hover:text-[var(--color-fg)] disabled:opacity-50"
+              onClick={() => scrollCarousel(-1)}
+              disabled={!carouselScroll.previous}
+              aria-label="Прокрутить фотографии влево"
+              className="flex size-9 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] shadow-md transition hover:bg-[var(--color-surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-35"
             >
-              {uploading ? <Spinner /> : <PlusIcon className="size-7" />}
+              <ArrowLeftIcon className="size-5" />
             </button>
-          </li>
-        </ul>
+            <button
+              type="button"
+              onClick={() => scrollCarousel(1)}
+              disabled={!carouselScroll.next}
+              aria-label="Прокрутить фотографии вправо"
+              className="flex size-9 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] shadow-md transition hover:bg-[var(--color-surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-35"
+            >
+              <ArrowRightIcon className="size-5" />
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
