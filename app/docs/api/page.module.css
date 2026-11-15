@@ -35,9 +35,10 @@
 .primary { background: var(--violet); color: white; }
 .primary span { margin-left: 18px; }
 .secondary { border: 1px solid var(--line); }
-.baseUrl { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: var(--wash); border: 1px solid var(--line); border-radius: 7px; padding: 13px 16px; font-size: 11px; }
+.baseUrl { display: grid; grid-template-columns: max-content minmax(0, 1fr) auto; align-items: center; gap: 12px; background: var(--wash); border: 1px solid var(--line); border-radius: 7px; padding: 13px 16px; font-size: 11px; }
 .baseUrl > span { font-size: 9px; letter-spacing: .12em; font-weight: 700; color: var(--subtle); }
-.baseUrl > code { flex: 1; overflow-wrap: anywhere; }
+.baseUrl > code { min-width: 0; white-space: nowrap; overflow-x: auto; }
+.baseUrl button { min-width: 112px; }
 .docs button { cursor: pointer; font-size: 11px; font-weight: 600; border: 1px solid var(--line); border-radius: 4px; padding: 4px 9px; background: var(--paper); color: var(--subtle); }
 .docs button:hover { background: var(--wash); color: var(--violet); }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; border-bottom: 1px solid var(--line); padding: 30px 0; }
@@ -107,7 +108,8 @@
   .main { padding: 32px 22px 0; }
   .hero h1 { font-size: 54px; }
   .lead { font-size: 14px; }
-  .baseUrl > code { flex-basis: 100%; order: 3; }
+  .baseUrl { grid-template-columns: minmax(0, 1fr) auto; row-gap: 10px; }
+  .baseUrl > code { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
   .stats { gap: 12px; }
   .stats strong { font-size: 18px; }
   .stats span { font-size: 9px; }
