@@ -55,12 +55,18 @@ function PreviewDialog({ file, models, onSelect, onClose }: { file: Attachment; 
   return createPortal(
     <dialog ref={dialog} aria-labelledby={titleId}
       onCancel={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }}
+      style={{
+        paddingTop: "env(safe-area-inset-top, 0px)",
+        paddingRight: "env(safe-area-inset-right, 0px)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingLeft: "env(safe-area-inset-left, 0px)",
+      }}
       className="fixed inset-0 m-auto h-[94dvh] max-h-none w-[min(1200px,96vw)] max-w-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] p-0 text-[var(--color-fg)] shadow-2xl backdrop:bg-black/60 max-sm:h-dvh max-sm:w-screen max-sm:rounded-none">
       <div className="flex h-full flex-col">
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
           <div className="min-w-0 flex-1"><h2 id={titleId} className="truncate text-sm font-semibold" title={file.name}>{file.name}</h2><p className="text-xs text-[var(--color-muted)]">3D-просмотр · WebCAD</p></div>
           <AttachmentDownload file={file} />
-          <Button type="button" variant="secondary" onClick={onClose} data-preview-close>Закрыть</Button>
+          <Button type="button" variant="secondary" className="min-h-11 shrink-0" onClick={onClose} data-preview-close>Закрыть</Button>
           {models.length > 1 ? <label className="flex w-full min-w-0 items-center gap-3 text-xs text-[var(--color-muted)]">
             <span className="shrink-0">Модель</span><select aria-label="3D-модель" value={file.id} onChange={(event) => onSelect(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]">
               {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
