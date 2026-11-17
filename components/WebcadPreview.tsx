@@ -66,8 +66,8 @@ function PreviewDialog({ file, models, onSelect, onClose }: { file: Attachment; 
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
           <div className="min-w-0 flex-1"><h2 id={titleId} className="truncate text-sm font-semibold" title={file.name}>{file.name}</h2><p className="text-xs text-[var(--color-muted)]">3D-просмотр · WebCAD</p></div>
           <AttachmentDownload file={file} />
-          <Button type="button" variant="secondary" className="order-first min-h-11 shrink-0 max-sm:w-11 max-sm:border-transparent max-sm:bg-transparent max-sm:p-0 sm:order-none" onClick={onClose} data-preview-close>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 sm:hidden"><path d="m12 19-7-7 7-7M5 12h14" /></svg>
+          <Button type="button" variant="secondary" className="order-first min-h-11 shrink-0 max-sm:w-8 max-sm:border-transparent max-sm:bg-transparent max-sm:p-0 max-sm:text-[var(--color-muted)] max-sm:hover:text-[var(--color-fg)] sm:order-none" onClick={onClose} data-preview-close>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 sm:hidden"><path d="m15 18-6-6 6-6" /></svg>
             <span className="sr-only sm:hidden">Назад к компоненту</span>
             <span className="hidden sm:inline">Закрыть</span>
           </Button>
