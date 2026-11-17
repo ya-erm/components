@@ -66,7 +66,11 @@ function PreviewDialog({ file, models, onSelect, onClose }: { file: Attachment; 
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
           <div className="min-w-0 flex-1"><h2 id={titleId} className="truncate text-sm font-semibold" title={file.name}>{file.name}</h2><p className="text-xs text-[var(--color-muted)]">3D-просмотр · WebCAD</p></div>
           <AttachmentDownload file={file} />
-          <Button type="button" variant="secondary" className="min-h-11 shrink-0" onClick={onClose} data-preview-close>Закрыть</Button>
+          <Button type="button" variant="secondary" className="order-first min-h-11 shrink-0 max-sm:w-11 max-sm:border-transparent max-sm:bg-transparent max-sm:p-0 sm:order-none" onClick={onClose} data-preview-close>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 sm:hidden"><path d="m12 19-7-7 7-7M5 12h14" /></svg>
+            <span className="sr-only sm:hidden">Назад к компоненту</span>
+            <span className="hidden sm:inline">Закрыть</span>
+          </Button>
           {models.length > 1 ? <label className="flex w-full min-w-0 items-center gap-3 text-xs text-[var(--color-muted)]">
             <span className="shrink-0">Модель</span><select aria-label="3D-модель" value={file.id} onChange={(event) => onSelect(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]">
               {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
