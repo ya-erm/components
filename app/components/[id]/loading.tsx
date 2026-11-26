@@ -1,7 +1,15 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { usePathname } from "next/navigation";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { AppHeader, BackLink } from "@/components/AppHeader";
+import { CachedComponentPreview } from "@/components/CachedComponentPreview";
 import { controlClass } from "@/components/ui/Field";
 import { BASE as buttonBase } from "@/components/ui/Button";
+import { CloseComponentModal } from "@/components/ComponentModal";
+import { readComponentPreview } from "@/lib/component-list-state";
+
+const noUpdates = () => () => {};
 
 // Скелетон повторяет разметку ComponentForm 1:1 (те же классы полей и
 // кнопок), чтобы при появлении реальных данных не было layout shift —
@@ -61,43 +69,40 @@ function FieldSkeleton({ label, hint, children }: { label: string; hint?: string
   );
 }
 
-export default function Loading() {
+export function ComponentLoading({ modal = false }: { modal?: boolean }) {
+  const pathname = usePathname();
+  const preview = useSyncExternalStore(
+    noUpdates,
+    () => readComponentPreview(pathname),
+    () => undefined,
+  );
   return (
     <>
       <AppHeader
-        title={<TitleBar />}
-        left={<BackLink href="/components" />}
+        title={preview?.data.name || <TitleBar />}
+        left={modal ? <CloseComponentModal /> : <BackLink href="/components" />}
         right={<LabelBar className="h-4 w-12" />}
       />
 
       <div className="mx-auto max-w-xl px-4 py-5" role="status" aria-label="Загрузка компонента">
-        <div aria-hidden="true" className="flex flex-col gap-5">
-          <FieldSkeleton label="w-20">
-            <ControlBar />
-          </FieldSkeleton>
+        {preview ? <CachedComponentPreview data={preview.data} /> : <>
+        <div className="flex flex-col gap-5">
+          <FieldSkeleton label="w-20"><ControlBar /></FieldSkeleton>
 
           <div>
             <LabelRow className="w-24" />
             <div className="h-32 overflow-x-auto rounded-xl sm:h-36">
               <ul className="flex h-full min-w-0 gap-2 pb-1">
                 {[0, 1, 2].map((i) => (
-                  <li
-                    key={i}
-                    className="relative aspect-square h-full shrink-0 animate-pulse overflow-hidden rounded-xl border bg-[var(--color-surface-2)]"
-                    style={noBorder}
-                  />
+                  <li key={i} className="relative aspect-square h-full shrink-0 animate-pulse overflow-hidden rounded-xl border bg-[var(--color-surface-2)]" style={noBorder} />
                 ))}
               </ul>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FieldSkeleton label="w-10" hint="Выберите или введите свой">
-              <ControlBar />
-            </FieldSkeleton>
-            <FieldSkeleton label="w-14">
-              <ControlBar />
-            </FieldSkeleton>
+            <FieldSkeleton label="w-10" hint="Выберите или введите свой"><ControlBar /></FieldSkeleton>
+            <FieldSkeleton label="w-14"><ControlBar /></FieldSkeleton>
           </div>
 
           <FieldSkeleton label="w-12" hint="Enter или запятая — добавить тег">
@@ -131,7 +136,12 @@ export default function Loading() {
           </div>
         </div>
         <span className="sr-only">Загрузка компонента…</span>
+        </>}
       </div>
     </>
   );
+}
+
+export default function Loading() {
+  return <ComponentLoading />;
 }

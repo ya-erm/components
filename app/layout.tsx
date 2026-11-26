@@ -24,11 +24,15 @@ export const viewport: Viewport = {
 
 export default function RootLayout({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+  modal,
+}: Readonly<{ children: React.ReactNode; modal: React.ReactNode }>) {
   // Шапку (AppHeader) и контейнер рендерит каждая страница сама.
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body>
+        {children}
+        {modal}
+      </body>
     </html>
   );
 }

@@ -75,15 +75,18 @@ export function BackLink({
   href,
   label = "Назад",
   scroll,
+  prefetch,
 }: {
   href: string;
   label?: string;
   scroll?: boolean;
+  prefetch?: boolean;
 }) {
   return (
     <Link
       href={href}
       scroll={scroll}
+      prefetch={prefetch}
       className="-ml-1 inline-flex items-center gap-0.5 rounded-lg py-1 pr-2 pl-1 text-[var(--color-accent)] transition active:opacity-70"
     >
       <ChevronLeftIcon className="size-5 shrink-0" />

@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/states";
-import { componentReturnTarget, removeSavedComponent } from "@/lib/component-list-state";
+import { componentReturnTarget, notifyComponentDeleted, removeSavedComponent } from "@/lib/component-list-state";
 
-export function DeleteComponentButton({ id }: { id: string }) {
+export function DeleteComponentButton({ id, backHref = "/components", modal = false }: { id: string; backHref?: string; modal?: boolean }) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,10 +18,16 @@ export function DeleteComponentButton({ id }: { id: string }) {
     try {
       const res = await fetch(`/api/components/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      const returnTarget = componentReturnTarget(`/components/${id}`, "/components");
+      const returnTarget = backHref.startsWith("/projects")
+        ? { href: backHref, scroll: true }
+        : componentReturnTarget(`/components/${id}`, backHref);
       removeSavedComponent(id);
-      router.push(returnTarget.href, { scroll: returnTarget.scroll });
-      router.refresh();
+      notifyComponentDeleted(id);
+      if (modal) router.back();
+      else {
+        router.push(returnTarget.href, { scroll: returnTarget.scroll });
+        router.refresh();
+      }
     } catch {
       setError("Не удалось удалить");
       setDeleting(false);
