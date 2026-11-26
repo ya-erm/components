@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { convertImageToWebp } from "./image-webp";
+import sharp from "sharp";
 
 /**
  * S3-совместимое хранилище (AWS S3 / Yandex Cloud / MinIO).
@@ -67,7 +67,10 @@ export async function uploadImage(
   if (!isAllowedImageType(contentType)) {
     throw new Error("Недопустимый тип фотографии");
   }
-  const webp = await convertImageToWebp(buffer);
+  const webp = await sharp(buffer, { animated: true })
+    .rotate()
+    .webp({ quality: 95 })
+    .toBuffer();
   const key = `${PUBLIC_IMAGE_PREFIX}/${ownerId}/${randomUUID()}.webp`;
 
   await client().send(
@@ -76,7 +79,6 @@ export async function uploadImage(
       Key: key,
       Body: webp,
       ContentType: "image/webp",
-      Metadata: { "webp-quality": "95" },
     }),
   );
 
