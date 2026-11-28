@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import lockfile from "proper-lockfile";
-import { createBackup, prune, listObjects, fingerprintObjects } from "./storage.mjs";
+import { createBackup, prune, listObjects, fingerprintObjects, archiveGroup, BACKUP_FORMAT_VERSION } from "./storage.mjs";
 import { authorized, assertRecipient, TelegramError } from "./telegram.mjs";
 
 export async function readJson(path, fallback) {
@@ -17,13 +17,13 @@ export async function writeJson(path, value) {
   await rename(temp, path);
 }
 
-const deliveryScope = (config) => createHash("sha256").update(JSON.stringify([
-  config.bucket, config.telegram.token, config.telegram.base, config.telegram.chatId,
+const deliveryScope = (config, version = BACKUP_FORMAT_VERSION) => createHash("sha256").update(JSON.stringify([
+  version, config.bucket, config.telegram.token, config.telegram.base, config.telegram.chatId,
 ])).digest("hex");
 
 export async function rememberSuccessfulDelivery(backup, config, sentAt = new Date().toISOString()) {
   await writeJson(join(config.dataDir, "last-success.json"), {
-    scope: deliveryScope(config), fingerprint: fingerprintObjects(backup.manifest.objects), sentAt,
+    scope: deliveryScope(config, backup.manifest.version), fingerprint: fingerprintObjects(backup.manifest.objects), sentAt,
   });
 }
 
@@ -53,24 +53,32 @@ export async function lock(directory) {
 
 export async function deliverBackup(backup, config, telegram, { silent = false } = {}) {
   assertRecipient(config.telegram);
-  const cachePath = join(config.dataDir, "telegram-photos.json");
   // file_id привязан к конкретному боту и месту его API; не переиспользуем после смены.
   const account = createHash("sha256").update(`${config.telegram.token}:${config.telegram.base}`).digest("hex");
-  const cached = await readJson(cachePath, null);
-  const photoFileId = cached?.account === account && cached?.fingerprint === backup.photosFingerprint ? cached?.fileId : undefined;
-  const caption = `Бекап: ${backup.manifest.createdAt}\nОбъектов: ${backup.manifest.objects.length}, фотографий: ${backup.manifest.objects.filter((o) => o.key.startsWith("public/images/")).length}`;
+  const fileIds = {};
+  for (const group of ["photos", "attachments"]) {
+    if (!backup.archives.some((a) => a.group === group)) continue;
+    const cached = await readJson(join(config.dataDir, `telegram-${group}.json`), null);
+    if (cached?.account === account && cached?.formatVersion === backup.manifest.version && cached?.fingerprint === backup[`${group}Fingerprint`])
+      fileIds[group] = cached.fileId;
+  }
+  const caption = `Бекап: ${backup.manifest.createdAt}\nОбъектов: ${backup.manifest.objects.length}, фотографий: ${backup.manifest.objects.filter((o) => archiveGroup(o.key) === "photos").length}, вложений: ${backup.manifest.objects.filter((o) => archiveGroup(o.key) === "attachments").length}`;
   let result;
-  try { result = await telegram.documents(backup.archives, caption, photoFileId, { silent }); }
+  try { result = await telegram.documents(backup.archives, caption, fileIds, { silent }); }
   catch (error) {
-    if (!photoFileId || !(error instanceof TelegramError) || error.code !== 400) throw error;
+    if (!Object.values(fileIds).some(Boolean) || !(error instanceof TelegramError) || error.code !== 400) throw error;
     result = await telegram.documents(backup.archives, caption, undefined, { silent });
   }
-  if (!Array.isArray(result) || result.length !== 2 || result.some((item) => !item.document?.file_id) ||
-      !result[0].media_group_id || result[0].media_group_id !== result[1].media_group_id) throw new Error("Telegram не вернул полный альбом архивов");
+  if (!Array.isArray(result) || result.length !== backup.archives.length || result.some((item) => !item.document?.file_id) ||
+      !result[0].media_group_id || result.some((item) => item.media_group_id !== result[0].media_group_id)) throw new Error("Telegram не вернул полный альбом архивов");
   const sent = result.map((item, index) => ({ group: backup.archives[index].group,
     messageId: item.message_id, fileId: item.document.file_id, mediaGroupId: item.media_group_id }));
-  const photo = sent.find((item) => item.group === "photos");
-  await writeJson(cachePath, { account, fingerprint: backup.photosFingerprint, fileId: photo.fileId });
+  for (const group of ["photos", "attachments"]) {
+    const file = sent.find((item) => item.group === group);
+    if (file) await writeJson(join(config.dataDir, `telegram-${group}.json`), {
+      account, formatVersion: backup.manifest.version, fingerprint: backup[`${group}Fingerprint`], fileId: file.fileId,
+    });
+  }
   await writeJson(join(backup.directory, "sent.json"), { sentAt: new Date().toISOString(), documents: sent });
   await rememberSuccessfulDelivery(backup, config);
   await prune(config.dataDir, config.keep);
@@ -89,7 +97,7 @@ export async function runBot(s3, config, telegram, signal, log = console.log) {
   if (webhook.url) throw new Error("У бота настроен webhook: отключите его перед запуском long polling");
   await telegram.request("setMyCommands", {
     scope: { type: "chat", chat_id: config.telegram.chatId },
-    commands: [{ command: "backup", description: "Полный бекап: данные и фотографии" }],
+    commands: [{ command: "backup", description: "Полный бекап: данные, фото и вложения" }],
   });
   const statePath = join(config.dataDir, "bot-state.json");
   const state = await readJson(statePath, {});
@@ -145,7 +153,7 @@ export async function runBot(s3, config, telegram, signal, log = console.log) {
           if (command === "/backup" || command?.toLowerCase() === `/backup@${info.username.toLowerCase()}`) {
             if (job) await telegram.message("Бекап уже выполняется.");
             else launch(false);
-          } else if (command === "/start") await telegram.message("Команда /backup пришлёт архив данных и архив фотографий.");
+          } else if (command === "/start") await telegram.message("Команда /backup пришлёт три архива: данные, фотографии и вложения.");
         }
         state.offset = update.update_id + 1;
         await writeJson(statePath, state);
