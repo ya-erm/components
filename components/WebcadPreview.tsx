@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Attachment } from "@/lib/schema";
+import { attachmentUrl } from "@/lib/attachment-links";
 import { createWebcadBridge, modelAttachments, readPreviewBytes, webcadEmbedUrl, webcadFormat, type PreviewState } from "@/lib/webcad-preview";
 import { Button, buttonClass } from "./ui/Button";
 import { AttachmentDownload } from "./AttachmentDownload";
@@ -114,7 +115,7 @@ function ModelViewport({ file }: { file: Attachment }) {
           {state.phase !== "ready" ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[var(--color-bg)] p-6 text-center">
             {state.phase === "error" ? <>
               <p className="max-w-md text-sm" role="alert">{state.error}</p>
-              <div className="flex flex-wrap justify-center gap-3"><Button type="button" variant="secondary" onClick={() => setAttempt((value) => value + 1)}>Повторить</Button><a href={`/api/files/${file.id}`} className={buttonClass("ghost")}>Скачать исходник</a></div>
+              <div className="flex flex-wrap justify-center gap-3"><Button type="button" variant="secondary" onClick={() => setAttempt((value) => value + 1)}>Повторить</Button><a href={attachmentUrl(file)} className={buttonClass("ghost")}>Скачать исходник</a></div>
             </> : <><PreviewProgress state={state} /><p className="text-sm tabular-nums text-[var(--color-muted)]">{previewLabel(state)}</p><p className="max-w-sm text-xs text-[var(--color-muted)]">Первый запуск может занять некоторое время</p></>}
           </div> : null}
         </div>

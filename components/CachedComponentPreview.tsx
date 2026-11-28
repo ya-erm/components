@@ -49,7 +49,7 @@ export function CachedComponentPreview({ data }: { data: ComponentData }) {
       </div>
 
       <div className={attachmentSectionClass}>
-        <AttachmentSectionHeader count={data.attachments?.length ?? 0} />
+        <AttachmentSectionHeader files={data.attachments ?? []} />
       </div>
 
       <Field label="Тип" hint="Выберите или введите свой">

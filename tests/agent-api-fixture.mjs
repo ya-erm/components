@@ -150,10 +150,32 @@ assert.equal((await write(path, { data: { attachments } })).status, 200);
 assert.deepEqual((await read(path)).data.attachments, attachments);
 const componentHtml = await (await session(`/components/${component.id}`)).text();
 assert.ok(componentHtml.includes("Прикрепить файлы"));
-for (const name of ["part.step", "model.stl", "project.webcad.json", "20MB-model.stl"])
+for (const name of ["Чертёж.pdf", "part.step", "model.stl", "project.webcad.json", "20MB-model.stl"])
   assert.ok(componentHtml.includes(`Посмотреть: ${name}`));
-for (const name of ["Чертёж.pdf", "sources.zip"])
-  assert.ok(!componentHtml.includes(`Посмотреть: ${name}`));
+assert.ok(!componentHtml.includes("Посмотреть: sources.zip"));
+assert.ok(componentHtml.includes("Есть 3D-модели"));
+assert.ok(componentHtml.includes("Есть PDF-файлы"));
+
+const pdf = attachments[0];
+const pdfPath = `/api/files/${pdf.id}`;
+const query = new URLSearchParams({ name: pdf.name });
+// Simulate an older object that exists in storage without an original filename.
+const storedPdf = `http://127.0.0.1:19000/components-test/users/fixture-demo/files/${pdf.id}`;
+assert.equal((await fetch(storedPdf, { method: "PUT", body: fileBytes })).status, 200);
+const pdfDownload = await api(`${pdfPath}?${query}`);
+assert.equal(pdfDownload.status, 307);
+const downloadedPdf = await fetch(pdfDownload.headers.get("location"));
+assert.ok(downloadedPdf.headers.get("content-disposition").startsWith("attachment;"));
+assert.ok(downloadedPdf.headers.get("content-disposition").includes(encodeURIComponent(pdf.name)));
+query.set("preview", "pdf");
+const pdfPreview = await api(`${pdfPath}?${query}`);
+assert.equal(pdfPreview.status, 307);
+const previewedPdf = await fetch(pdfPreview.headers.get("location"));
+assert.equal(previewedPdf.headers.get("content-type"), "application/pdf");
+assert.ok(previewedPdf.headers.get("content-disposition").startsWith("inline;"));
+assert.ok(previewedPdf.headers.get("content-disposition").includes(encodeURIComponent(pdf.name)));
+assert.deepEqual(Buffer.from(await previewedPdf.arrayBuffer()), fileBytes);
+assert.equal((await fetch(`${base}${pdfPath}?${query}`, { redirect: "manual" })).status, 401);
 assert.equal((await api("/api/files/not-a-uuid")).status, 404);
 assert.equal((await fetch(base + `/api/files/${attachments[0].id}`, { redirect: "manual" })).status, 401);
 const oversized = new FormData();

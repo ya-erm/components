@@ -1,3 +1,4 @@
+import { attachmentUrl } from "@/lib/attachment-links";
 import type { Attachment } from "@/lib/schema";
 
 export function DownloadIcon({ className = "size-[18px]" }: { className?: string }) {
@@ -7,7 +8,7 @@ export function DownloadIcon({ className = "size-[18px]" }: { className?: string
 }
 
 export function AttachmentDownload({ file }: { file: Pick<Attachment, "id" | "name"> }) {
-  return <a href={`/api/files/${file.id}`} aria-label={`Скачать ${file.name}`} title={`Скачать ${file.name}`}
+  return <a href={attachmentUrl(file)} aria-label={`Скачать ${file.name}`} title={`Скачать ${file.name}`}
     className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-[var(--color-muted)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]">
     <DownloadIcon />
   </a>;

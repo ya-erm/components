@@ -148,21 +148,33 @@ export async function createAttachmentUpload(ownerId: string, id: string, name: 
   return { url, method: "PUT" as const, headers: { "Content-Type": "application/octet-stream" } };
 }
 
-function attachmentDisposition(name: string) {
+function attachmentDisposition(name: string, mode: "inline" | "attachment") {
   const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
   const encoded = encodeURIComponent(name).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+  return `${mode}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-export async function attachmentDownloadUrl(ownerId: string, id: string) {
+function decodeAttachmentName(name: string) {
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
+}
+
+export async function attachmentDownloadUrl(ownerId: string, id: string, {
+  fallbackName,
+  previewPdf = false,
+}: { fallbackName?: string; previewPdf?: boolean } = {}) {
   const Key = `users/${ownerId}/files/${id}`;
   try {
     const object = await client().send(new HeadObjectCommand({ Bucket: BUCKET, Key }));
-    const name = decodeURIComponent(object.Metadata?.filename ?? "file").replace(/[\r\n]/g, "_");
+    const storedName = decodeAttachmentName(object.Metadata?.filename ?? "").trim();
+    const name = (storedName || fallbackName || (previewPdf ? "file.pdf" : "file")).replace(/[\x00-\x1f\x7f\\/]/g, "_");
     return getSignedUrl(client(), new GetObjectCommand({
       Bucket: BUCKET, Key,
-      ResponseContentType: "application/octet-stream",
-      ResponseContentDisposition: attachmentDisposition(name),
+      ResponseContentType: previewPdf ? "application/pdf" : "application/octet-stream",
+      ResponseContentDisposition: attachmentDisposition(name, previewPdf ? "inline" : "attachment"),
       ResponseCacheControl: "private, no-store",
     }), { expiresIn: 60 });
   } catch (error) {
