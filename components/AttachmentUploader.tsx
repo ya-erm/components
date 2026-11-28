@@ -6,11 +6,25 @@ import { type Attachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_SIZE } from "@/lib/sch
 import type { ComponentDTO } from "@/lib/components-repo";
 import { changeAttachment, mergeAttachmentDraft, mergeReorderedAttachments, reorderAttachments } from "@/lib/attachment-actions";
 import { attachmentUrl, isHtmlAttachment, isPdfAttachment } from "@/lib/attachment-links";
+import { webcadFormat } from "@/lib/webcad-preview";
 import { SortableList } from "./SortableList";
-import { Button, buttonClass } from "./ui/Button";
+import { Button } from "./ui/Button";
+import { disclosureHeadingClass } from "./ui/Field";
 import { AttachmentSectionHeader, attachmentSectionClass } from "./AttachmentSectionHeader";
 import { WebcadPreview } from "./WebcadPreview";
-import { DownloadIcon } from "./AttachmentDownload";
+import { AttachmentDownload } from "./AttachmentDownload";
+
+const bytesPerKilobyte = 1024;
+const bytesPerMegabyte = bytesPerKilobyte ** 2;
+const filenameClass = "max-w-full break-words text-left text-[var(--color-accent)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]";
+
+function formatAttachmentSize(bytes: number) {
+  if (bytes > bytesPerMegabyte) {
+    const megabytes = Math.ceil(bytes * 10 / bytesPerMegabyte) / 10;
+    return `${megabytes.toFixed(1)}\u00a0МБ`;
+  }
+  return `${Math.ceil(bytes / bytesPerKilobyte)}\u00a0КБ`;
+}
 
 export function AttachmentUploader({ value, savedValue = [], componentId, onPersisted, onChange, onUploadingChange }: {
   value: Attachment[];
@@ -147,7 +161,7 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
   return (
     <>
     <details className="group">
-      <summary className={`${attachmentSectionClass} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+      <summary className={`${attachmentSectionClass} ${disclosureHeadingClass} list-none [&::-webkit-details-marker]:hidden`}>
         <AttachmentSectionHeader files={value} />
       </summary>
       <div className="mt-3 flex flex-col gap-3">
@@ -156,19 +170,24 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
         {(file, handle) => {
           const preview = isHtmlAttachment(file) ? "html" : isPdfAttachment(file) ? "pdf" : undefined;
           return (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
-            {handle}
-            <a href={attachmentUrl(file)} title={`Скачать ${file.name}`} className="min-w-0 flex-1 basis-32 break-words text-sm text-[var(--color-accent)]">
-              {file.name}<span className="ml-2 inline-flex items-center gap-1 text-xs text-[var(--color-muted)]">{Math.max(1, Math.ceil(file.size / 1024))} КБ<DownloadIcon className="size-3.5" /></span>
-            </a>
-            {preview
-              ? <a href={attachmentUrl(file, preview)} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "shrink-0 px-3 text-xs")}
-                  aria-label={`Посмотреть: ${file.name}`}>Посмотреть</a>
-              : <WebcadPreview file={file} files={value} />}
-            <Button type="button" variant="ghost" className="size-10 shrink-0 !p-0 !text-red-500 hover:bg-red-500/10 hover:!text-red-600" disabled={uploading} aria-label={`Удалить файл ${file.name}`} title="Удалить файл" onClick={() => void remove(file)}>
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-[18px]"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
-            </Button>
-          </div>
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
+              {handle}
+              <div className="min-w-0 flex-1 basis-32 text-sm">
+                {preview ? (
+                  <a href={attachmentUrl(file, preview)} target="_blank" rel="noopener noreferrer" className={filenameClass}
+                    title="Посмотреть" aria-label={`Посмотреть: ${file.name}`}>{file.name}</a>
+                ) : webcadFormat(file.name) ? (
+                  <WebcadPreview file={file} files={value} className={filenameClass} />
+                ) : (
+                  <a href={attachmentUrl(file)} title={`Скачать ${file.name}`} className={filenameClass}>{file.name}</a>
+                )}{" "}
+                <span className="ml-1 text-xs text-[var(--color-muted)]">{formatAttachmentSize(file.size)}</span>
+              </div>
+              <AttachmentDownload file={file} />
+              <Button type="button" variant="ghost" className="size-10 shrink-0 !p-0 !text-red-500 hover:bg-red-500/10 hover:!text-red-600" disabled={uploading} aria-label={`Удалить файл ${file.name}`} title="Удалить файл" onClick={() => void remove(file)}>
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-[18px]"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+              </Button>
+            </div>
           );
         }}
       </SortableList>

@@ -10,7 +10,7 @@ import {
   PURCHASE_STATUSES,
 } from "@/lib/schema";
 import { Button } from "@/components/ui/Button";
-import { ChevronDownIcon, Field, Input, ProjectsIcon } from "@/components/ui/Field";
+import { ChevronDownIcon, disclosureHeadingClass, Field, Input, ProjectsIcon } from "@/components/ui/Field";
 import { CommentsEditor } from "@/components/CommentsEditor";
 import { InventorySummary } from "@/components/InventorySummary";
 import { OrderSummaryBadges } from "@/components/OrderSummaryBadges";
@@ -20,7 +20,7 @@ import { StatusSelect } from "@/components/StatusSelect";
 
 type Ledger = { purchases: Purchase[]; usages: Usage[] };
 const sectionSummaryClass =
-  "flex min-h-12 w-full cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden";
+  `flex min-h-12 list-none items-center gap-2 [&::-webkit-details-marker]:hidden ${disclosureHeadingClass}`;
 
 function projectCountText(count: number) {
   const form = new Intl.PluralRules("ru").select(count);
@@ -117,8 +117,8 @@ export function ComponentLedgerEditor({
         <summary className={sectionSummaryClass}>
           <StatusIcon status="in_stock" className="!size-5 text-emerald-600" />
           <span role="heading" aria-level={2} className="shrink-0 text-lg font-semibold">Остаток</span>
-          <span className="flex min-w-0 flex-1">
-            <InventorySummary data={inventoryData} compact />
+          <span className="flex min-w-0 flex-1 items-center">
+            <InventorySummary data={inventoryData} size="section" />
           </span>
           {overdrawn ? (
             <span aria-label="Использовано больше, чем доставлено" className="text-sm font-bold text-red-500">!</span>
@@ -139,7 +139,7 @@ export function ComponentLedgerEditor({
         <summary className={sectionSummaryClass}>
           <StatusIcon status="in_transit" className="!size-5 text-amber-600" />
           <span role="heading" aria-level={2} className="shrink-0 text-lg font-semibold">Заказы</span>
-          <span className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto whitespace-nowrap">
+          <span className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap">
             <OrderSummaryBadges purchases={value.purchases} />
           </span>
           <ChevronDownIcon className="ml-auto size-5 shrink-0 text-[var(--color-muted)] transition-transform group-open:rotate-180" />
@@ -274,7 +274,7 @@ export function ComponentLedgerEditor({
                     open={!initial.orders.some((value) => value.id === order.id)}
                     className="border-t border-[var(--color-border)] pt-2.5"
                   >
-                    <summary className="cursor-pointer text-sm text-[var(--color-muted)]">
+                    <summary className={`${disclosureHeadingClass} py-1 text-sm text-[var(--color-muted)]`}>
                       Ссылка и комментарии
                     </summary>
                     <div className="mt-3 flex flex-col gap-3">

@@ -85,13 +85,13 @@ export function CachedComponentPreview({ data }: { data: ComponentData }) {
         <div className={sectionClass}>
           <StatusIcon status="in_stock" className="!size-5 text-emerald-600" />
           <span className="shrink-0 text-lg font-semibold">Остаток</span>
-          <span className="flex min-w-0 flex-1"><InventorySummary data={data} compact /></span>
+          <span className="flex min-w-0 flex-1 items-center"><InventorySummary data={data} size="section" /></span>
           <ChevronDownIcon className="ml-auto size-5 shrink-0 text-[var(--color-muted)]" />
         </div>
         <div className={sectionClass}>
           <StatusIcon status="in_transit" className="!size-5 text-amber-600" />
           <span className="shrink-0 text-lg font-semibold">Заказы</span>
-          <span className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto whitespace-nowrap">
+          <span className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap">
             <OrderSummaryBadges purchases={purchases} />
           </span>
           <ChevronDownIcon className="ml-auto size-5 shrink-0 text-[var(--color-muted)]" />

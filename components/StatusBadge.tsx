@@ -4,6 +4,14 @@ import { type ComponentStatus, STATUS_LABELS } from "@/lib/schema";
 
 type StatusBadgeVariant = "default" | "overlay";
 
+const SIZE_CLASS = {
+  default: "border px-1 text-xs",
+  compact: "px-1 text-[10px]",
+  section: "min-h-5 px-1.5 text-xs",
+};
+
+export type StatusBadgeSize = keyof typeof SIZE_CLASS;
+
 const STATUS_CLASS: Record<
   StatusBadgeVariant,
   Record<ComponentStatus, string>
@@ -42,7 +50,7 @@ export function StatusBadge({
   status?: ComponentStatus | null;
   children?: ReactNode;
   variant?: StatusBadgeVariant;
-  size?: "default" | "compact";
+  size?: StatusBadgeSize;
 } & ComponentProps<"span">) {
   if (!status || !(status in STATUS_LABELS)) return null;
   return (
@@ -50,7 +58,7 @@ export function StatusBadge({
       {...props}
       className={clsx(
         "inline-flex shrink-0 items-center rounded-full py-0.5 font-medium",
-        size === "compact" ? "px-1 text-[10px]" : "border px-1 text-xs",
+        SIZE_CLASS[size],
         STATUS_CLASS[variant][status],
         className,
       )}

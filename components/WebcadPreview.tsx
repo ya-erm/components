@@ -129,11 +129,10 @@ export function WebcadModelViewer({ files, initialFileId, onClose }: { files: At
   return selected ? <PreviewDialog file={selected} models={models} onSelect={setSelectedId} onClose={onClose} /> : null;
 }
 
-export function WebcadPreview({ file, files }: { file: Attachment; files?: Attachment[] }) {
+export function WebcadPreview({ file, files, className }: { file: Attachment; files: Attachment[]; className: string }) {
   const [open, setOpen] = useState(false);
-  if (!webcadFormat(file.name)) return null;
   return <>
-    <Button type="button" variant="secondary" className="shrink-0 px-3 text-xs" onClick={() => setOpen(true)} aria-label={`Посмотреть: ${file.name}`}>Посмотреть</Button>
-    {open ? <WebcadModelViewer files={files ?? [file]} initialFileId={file.id} onClose={() => setOpen(false)} /> : null}
+    <button type="button" className={className} onClick={() => setOpen(true)} title="Посмотреть" aria-label={`Посмотреть: ${file.name}`}>{file.name}</button>
+    {open ? <WebcadModelViewer files={files} initialFileId={file.id} onClose={() => setOpen(false)} /> : null}
   </>;
 }

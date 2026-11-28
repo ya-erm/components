@@ -911,7 +911,7 @@ function TableListRow({
       </div>
 
       <div className="max-w-44 sm:col-span-2 sm:max-w-none">
-        <InventorySummary data={item.data} compact />
+        <InventorySummary data={item.data} size="compact" />
       </div>
     </>
   );

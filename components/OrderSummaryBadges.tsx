@@ -16,12 +16,12 @@ export function OrderSummaryBadges({ purchases }: { purchases: Purchase[] }) {
           <StatusBadge
             key={purchase.id}
             status={badgeStatus}
-            size="compact"
-            className="gap-px"
+            size="section"
+            className="gap-0.5"
             title={label}
             aria-label={label}
           >
-            <StatusIcon status={purchase.status} compact />
+            <StatusIcon status={purchase.status} />
             <span className="tabular-nums" aria-hidden="true">{purchase.quantity ?? "—"}</span>
           </StatusBadge>
         );

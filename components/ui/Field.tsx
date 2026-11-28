@@ -4,6 +4,9 @@ import type { ComponentProps, ReactNode } from "react";
 export const controlClass =
   "w-full rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3.5 py-2.5 text-base outline-none transition focus:border-[var(--color-accent)] placeholder:text-[var(--color-muted)]";
 
+export const disclosureHeadingClass =
+  "-mx-2 cursor-pointer rounded-lg px-2 hover:bg-[var(--color-surface-2)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] motion-safe:transition-colors";
+
 export function Label({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) {
   return (
     <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-[var(--color-muted)]">

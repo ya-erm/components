@@ -4,18 +4,19 @@ import {
   hasInventoryStatus,
   STATUS_LABELS,
 } from "@/lib/schema";
-import { StatusBadge } from "@/components/StatusBadge";
+import { StatusBadge, type StatusBadgeSize } from "@/components/StatusBadge";
 import { StatusIcon } from "@/components/StatusIcon";
 
 export function InventorySummary({
   data,
-  compact = false,
+  size = "default",
   showLabels = false,
 }: {
   data: Pick<ComponentData, "inventory" | "purchases" | "usages">;
-  compact?: boolean;
+  size?: StatusBadgeSize;
   showLabels?: boolean;
 }) {
+  const compact = size === "compact";
   const totals = inventoryTotals(data).filter(
     (total) => total.quantity > 0 || total.unknown,
   );
@@ -45,7 +46,7 @@ export function InventorySummary({
           <StatusBadge
             key={total.status}
             status={total.status}
-            size={compact ? "compact" : "default"}
+            size={size}
             className={compact ? "gap-px" : "gap-0.5"}
             title={label}
             aria-label={label}

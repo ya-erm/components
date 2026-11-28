@@ -76,7 +76,7 @@ export function ComponentCard({
         }
       >
         <div className="pb-1.5">
-          <InventorySummary data={item.data} compact={compact} />
+          <InventorySummary data={item.data} size={compact ? "compact" : "default"} />
         </div>
         <div
           className={
