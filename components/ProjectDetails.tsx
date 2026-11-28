@@ -4,6 +4,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { projectSchema, type Project } from "@/lib/schema";
 import { AppHeader, BackLink } from "@/components/AppHeader";
+import { AttachmentUploader } from "@/components/AttachmentUploader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { ProjectDescription } from "@/components/ProjectDescription";
 import { Button } from "@/components/ui/Button";
@@ -25,22 +26,28 @@ export function ProjectDetails({
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [images, setImages] = useState(initial?.images ?? []);
+  const [attachments, setAttachments] = useState(initial?.attachments ?? []);
+  const [attachmentDraft, setAttachmentDraft] = useState(0);
   const [editingName, setEditingName] = useState(!initial);
   const [editingDescription, setEditingDescription] = useState(false);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dirty =
-    !saved ||
-    name !== saved.name ||
-    description !== (saved.description ?? "") ||
-    JSON.stringify(images) !== JSON.stringify(saved.images ?? []);
+  const uploading = uploadingImages || uploadingFiles;
+  const uploadStatus = uploadingFiles ? "Загрузка файлов…" : "Загрузка фото…";
+  const nameChanged = name !== saved?.name;
+  const descriptionChanged = description !== (saved?.description ?? "");
+  const imagesChanged = JSON.stringify(images) !== JSON.stringify(saved?.images ?? []);
+  const attachmentsChanged = JSON.stringify(attachments) !== JSON.stringify(saved?.attachments ?? []);
+  const dirty = nameChanged || descriptionChanged || imagesChanged || attachmentsChanged;
 
   function reset(project: Project) {
     setName(project.name);
     setDescription(project.description ?? "");
     setImages(project.images ?? []);
+    setAttachments(project.attachments ?? []);
     setEditingName(false);
     setEditingDescription(false);
     setPreview(false);
@@ -56,20 +63,27 @@ export function ProjectDetails({
       name,
       description,
       images,
+      ...(attachmentsChanged ? { attachments } : {}),
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0].message);
       return;
     }
+    const body = saved ? {
+      ...(nameChanged ? { name: parsed.data.name } : {}),
+      ...(descriptionChanged ? { description: parsed.data.description ?? "" } : {}),
+      ...(imagesChanged ? { images } : {}),
+      ...(attachmentsChanged ? { attachments, expectedAttachments: saved.attachments ?? [] } : {}),
+    } : parsed.data;
     setSaving(true);
     let created = false;
     try {
       const response = await fetch(
         saved ? `/api/projects/${encodeURIComponent(saved.id)}` : "/api/projects",
         {
-          method: saved ? "PUT" : "POST",
+          method: saved ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsed.data),
+          body: JSON.stringify(body),
         },
       );
       const result = await response.json();
@@ -157,9 +171,16 @@ export function ProjectDetails({
               <ImageUploader
                 value={images}
                 onChange={setImages}
-                onUploadingChange={setUploading}
+                onUploadingChange={setUploadingImages}
               />
             </div>
+            <AttachmentUploader
+              key={attachmentDraft}
+              value={attachments}
+              onChange={setAttachments}
+              onUploadingChange={setUploadingFiles}
+              label="Файлы проекта"
+            />
             <section
               aria-label="Описание проекта"
               className="flex flex-col gap-3"
@@ -241,14 +262,21 @@ export function ProjectDetails({
                 {saving
                   ? "Сохранение…"
                   : uploading
-                    ? "Загрузка фото…"
+                    ? uploadStatus
                     : "Сохранить"}
               </Button>
               <Button
                 type="button"
                 variant="secondary"
                 disabled={saving || uploading}
-                onClick={() => saved ? reset(saved) : router.push("/projects")}
+                onClick={() => {
+                  if (!saved) {
+                    router.push("/projects");
+                    return;
+                  }
+                  reset(saved);
+                  setAttachmentDraft((draft) => draft + 1);
+                }}
               >
                 Отмена
               </Button>

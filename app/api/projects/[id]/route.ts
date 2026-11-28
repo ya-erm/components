@@ -25,3 +25,5 @@ export async function PUT(
   const { id } = await params;
   return handleProjectSave(request, id);
 }
+
+export { PUT as PATCH };

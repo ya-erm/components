@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { AppHeader, BackLink } from "@/components/AppHeader";
+import { AttachmentSectionHeader, attachmentSectionClass } from "@/components/AttachmentSectionHeader";
 import { ProjectDescription } from "@/components/ProjectDescription";
 import { useProjectNavigation } from "@/components/ProjectNavigationProvider";
 import type { ProjectListEntry } from "@/components/ProjectList";
@@ -84,6 +85,9 @@ function ProjectPreview({ project }: { project: ProjectListEntry }) {
         <EditIcon className="size-5 shrink-0 text-[var(--color-muted)]" />
       </h1>
       <PhotoStrip images={project.images} />
+      <div className={attachmentSectionClass}>
+        <AttachmentSectionHeader files={project.attachments ?? []} />
+      </div>
       <section className="flex flex-col gap-3" aria-label="Описание проекта">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-medium text-[var(--color-muted)]">Описание</h2>
@@ -103,6 +107,7 @@ function ProjectSkeleton() {
     <div className="flex flex-col gap-5 motion-safe:animate-pulse">
       <div className="flex h-8 items-center gap-2"><span className={`h-8 w-2/3 ${bar}`} /><span className={`size-5 shrink-0 ${bar}`} /></div>
       <div className="h-32 sm:h-36"><div className={`aspect-square h-[calc(100%_-_0.25rem)] rounded-xl ${bar}`} /></div>
+      <div className={attachmentSectionClass}><AttachmentSectionHeader /></div>
       <div className="flex flex-col gap-3">
         <div className="flex h-7 items-center justify-between gap-3"><span className={`h-4 w-24 ${bar}`} /><span className={`h-6 w-24 ${bar}`} /></div>
         <div className={`h-4 w-40 ${bar}`} />

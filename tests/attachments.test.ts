@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { componentDataSchema, attachmentUploadSchema, MAX_ATTACHMENT_SIZE } from "../lib/schema";
-import { parseCatalog } from "../lib/catalog";
+import { componentDataSchema, projectSchema, attachmentUploadSchema, MAX_ATTACHMENT_SIZE } from "../lib/schema";
+import { mergeLogistics, parseCatalog } from "../lib/catalog";
 
 const file = { id: "ec495b65-64cd-4080-83d0-c55de3ec6b1b", name: "Чертёж.step", size: 1024, contentType: "application/octet-stream", createdAt: "2026-11-14T12:00:00.000Z" };
 
@@ -16,7 +16,22 @@ test("attachments reject invalid IDs, sizes, duplicate IDs and excess records", 
     [{ ...file, id: "../other-user" }], [{ ...file, size: MAX_ATTACHMENT_SIZE + 1 }],
     [{ ...file, size: 0 }], [{ ...file, name: "" }], [file, file],
     Array.from({ length: 31 }, (_, index) => ({ ...file, id: `ec495b65-64cd-4080-83d0-${String(index).padStart(12, "0")}` })),
-  ]) assert.equal(componentDataSchema.safeParse({ name: "Invalid", attachments }).success, false);
+  ]) {
+    assert.equal(componentDataSchema.safeParse({ name: "Invalid", attachments }).success, false);
+    assert.equal(projectSchema.safeParse({ id: "project", name: "Invalid", attachments }).success, false);
+  }
+});
+
+test("legacy project updates preserve files and explicit empty lists remove them", () => {
+  const project = { id: "project", name: "CAD project", attachments: [file] };
+  const catalog = parseCatalog({ version: 2, items: [], projects: [project] });
+  for (const restoreProjectOrder of [false, true]) {
+    const base = { orders: [], shipments: [], projects: [{ id: project.id, name: "Renamed" }] };
+    const merged = mergeLogistics(catalog, base, { restoreProjectOrder });
+    assert.deepEqual(merged.projects[0].attachments, [file]);
+    const cleared = mergeLogistics(catalog, { ...base, projects: [{ ...base.projects[0], attachments: [] }] }, { restoreProjectOrder });
+    assert.deepEqual(cleared.projects[0].attachments, []);
+  }
 });
 
 test("upload and catalog limits accept exactly 20 MiB and reject one extra byte", () => {

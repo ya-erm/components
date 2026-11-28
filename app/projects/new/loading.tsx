@@ -1,4 +1,5 @@
 import { AppHeader, BackLink } from "@/components/AppHeader";
+import { AttachmentSectionHeader, attachmentSectionClass } from "@/components/AttachmentSectionHeader";
 import { buttonClass } from "@/components/ui/Button";
 import { PlusIcon, controlClass } from "@/components/ui/Field";
 
@@ -22,6 +23,7 @@ export default function NewProjectLoading() {
               </li>
             </ul>
           </div>
+          <div className={attachmentSectionClass}><AttachmentSectionHeader files={[]} /></div>
           <section aria-label="Описание проекта" className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-medium text-[var(--color-muted)]">Описание</h2>

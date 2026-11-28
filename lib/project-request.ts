@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/session";
-import { projectSchema } from "@/lib/schema";
+import { attachmentsSchema, projectSchema } from "@/lib/schema";
 import { CatalogValidationError } from "@/lib/catalog";
 import { ProjectConflictError } from "./project-mutations";
 import { saveProject } from "@/lib/components-repo";
+
+const projectSaveSchema = projectSchema.extend({
+  expectedAttachments: attachmentsSchema.optional(),
+});
+const projectPatchSchema = projectSaveSchema.omit({ id: true, componentOrder: true }).partial().strict();
 
 export async function handleProjectSave(request: Request, id?: string) {
   const ownerId = await currentUserId();
@@ -16,14 +21,19 @@ export async function handleProjectSave(request: Request, id?: string) {
   } catch {
     return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
   }
-  const parsed = projectSchema.safeParse({ ...body, id: id ?? randomUUID() });
+  const partial = id !== undefined && request.method === "PATCH";
+  const projectId = id?.trim() ?? randomUUID();
+  const parsed = partial
+    ? projectPatchSchema.safeParse(body)
+    : projectSaveSchema.safeParse({ ...body, id: projectId });
   if (!parsed.success)
     return NextResponse.json(
       { error: parsed.error.issues[0].message },
       { status: 400 },
     );
   try {
-    const project = await saveProject(ownerId, parsed.data, id === undefined);
+    const { expectedAttachments, ...details } = parsed.data;
+    const project = await saveProject(ownerId, { ...details, id: projectId }, id === undefined, { partial, expectedAttachments });
     if (!project)
       return NextResponse.json({ error: "Проект не найден" }, { status: 404 });
     return NextResponse.json(project, { status: id === undefined ? 201 : 200 });

@@ -176,6 +176,20 @@ export function mergeLogistics(
     for (const item of incoming) map.set(item.id, item);
     return [...map.values()];
   };
+  const currentProjects = new Map(catalog.projects.map((project) => [project.id, project]));
+  const incomingProjects = (patch.projects ?? []).map((project) => {
+    const current = currentProjects.get(project.id);
+    if (!current) return project;
+    const next = {
+      ...project,
+      ...(project.attachments === undefined && current.attachments !== undefined
+        ? { attachments: current.attachments }
+        : {}),
+    };
+    if (options.restoreProjectOrder) return next;
+    const { componentOrder: _ignored, ...details } = next;
+    return current.componentOrder ? { ...details, componentOrder: current.componentOrder } : details;
+  });
   return {
     ...catalog,
     orders: merge(catalog.orders, patch.orders),
@@ -183,28 +197,13 @@ export function mergeLogistics(
     // Forms preserve server ordering; explicit backup imports restore their order.
     projects: options.restoreProjectOrder
       ? merge(
-          patch.projects ?? [],
+          incomingProjects,
           catalog.projects.filter(
             (project) =>
               !patch.projects?.some((incoming) => incoming.id === project.id),
           ),
         )
-      : merge(
-          catalog.projects,
-          (patch.projects ?? []).map((project) => {
-            const current = catalog.projects.find(
-              (value) => value.id === project.id,
-            );
-            if (!current) return project;
-            const { componentOrder: _ignored, ...details } = project;
-            return {
-              ...details,
-              ...(current.componentOrder
-                ? { componentOrder: current.componentOrder }
-                : {}),
-            };
-          }),
-        ),
+      : merge(catalog.projects, incomingProjects),
     ...(patch.legacyIgnoredOrders
       ? {
           legacyIgnoredOrders: [

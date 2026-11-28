@@ -26,13 +26,14 @@ function formatAttachmentSize(bytes: number) {
   return `${Math.ceil(bytes / bytesPerKilobyte)}\u00a0КБ`;
 }
 
-export function AttachmentUploader({ value, savedValue = [], componentId, onPersisted, onChange, onUploadingChange }: {
+export function AttachmentUploader({ value, savedValue = [], componentId, onPersisted, onChange, onUploadingChange, label = "Файлы компонента" }: {
   value: Attachment[];
   savedValue?: Attachment[];
   componentId?: string;
   onPersisted?: (item: ComponentDTO) => void;
   onChange: (files: Attachment[]) => void;
   onUploadingChange: (uploading: boolean) => void;
+  label?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -166,7 +167,7 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
       </summary>
       <div className="mt-3 flex flex-col gap-3">
       <input ref={input} type="file" multiple className="sr-only" aria-label="Прикрепить файлы" disabled={uploading} onChange={(event) => upload(Array.from(event.target.files ?? []))} />
-      <SortableList items={value} compact disabled={uploading} label="Файлы компонента" getLabel={(file) => file.name} onReorder={(next) => void reorder(next)}>
+      <SortableList items={value} compact disabled={uploading} label={label} getLabel={(file) => file.name} onReorder={(next) => void reorder(next)}>
         {(file, handle) => {
           const preview = isHtmlAttachment(file) ? "html" : isPdfAttachment(file) ? "pdf" : undefined;
           return (

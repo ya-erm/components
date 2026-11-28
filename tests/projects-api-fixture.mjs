@@ -68,10 +68,39 @@ const version = (items, projectId) =>
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   );
 const name = `Project API ${Date.now()}`;
-const projectResponse = await write("/api/projects", { name });
+async function uploadProjectFile(name, contentType, bytes) {
+  const permission = await write("/api/files", { name, contentType, size: bytes.length });
+  assert.equal(permission.status, 201);
+  const { attachment, upload } = await permission.json();
+  const stored = await fetch(upload.url, { method: upload.method, headers: upload.headers, body: bytes });
+  assert.equal(stored.status, 200);
+  return attachment;
+}
+const htmlBytes = Buffer.from("<!doctype html><h1>Project guide</h1>");
+const html = await uploadProjectFile("Руководство.html", "text/html", htmlBytes);
+const pdf = await uploadProjectFile("Проект.pdf", "application/pdf", Buffer.from("%PDF-1.4\n"));
+const projectResponse = await write("/api/projects", { name, description: "Original", attachments: [html] });
 assert.equal(projectResponse.status, 201);
 const project = await projectResponse.json();
 const projectPath = `/api/projects/${encodeURIComponent(project.id)}`;
+assert.deepEqual(project.attachments, [html]);
+const attachments = [pdf, html];
+const setAttachments = { attachments, expectedAttachments: [html] };
+assert.equal((await write(projectPath, { description: "Changed independently" }, "PATCH")).status, 200);
+assert.equal((await write(projectPath, setAttachments, "PATCH")).status, 200);
+assert.equal((await write(projectPath, setAttachments, "PATCH")).status, 200);
+assert.equal((await write(projectPath, { attachments: [], expectedAttachments: [html] }, "PATCH")).status, 409);
+assert.equal((await write(projectPath, { attachments: [pdf, pdf] }, "PATCH")).status, 400);
+const withFiles = (await read(projectPath)).project;
+assert.deepEqual(withFiles.attachments, attachments);
+assert.equal(withFiles.description, "Changed independently");
+assert.equal((await write(projectPath, { description: "" }, "PATCH")).status, 200);
+assert.equal((await read(projectPath)).project.description, undefined);
+const fileResponse = await request(`/api/files/${html.id}`);
+assert.equal(fileResponse.status, 307);
+const stored = await fetch(fileResponse.headers.get("location"));
+assert.deepEqual(Buffer.from(await stored.arrayBuffer()), htmlBytes);
+assert.ok(stored.headers.get("content-disposition").includes(encodeURIComponent(html.name)));
 const exported = await read("/api/components/export");
 const reversed = exported.projects.map((entry) => entry.id).reverse();
 assert.equal(
@@ -158,6 +187,7 @@ assert.deepEqual(
   latest.projects.find((entry) => entry.id === project.id).componentOrder,
   ["legacy-led"],
 );
+assert.deepEqual(latest.projects.find((entry) => entry.id === project.id).attachments, attachments);
 const backup = latest;
 assert.equal(
   (
@@ -241,6 +271,9 @@ await request("/api/auth/callback/credentials", {
   }).toString(),
 });
 assert.notEqual((await read("/api/auth/session")).user.id, "fixture-demo");
+assert.equal((await request(projectPath)).status, 404);
+assert.equal((await write(projectPath, { attachments: [] }, "PATCH")).status, 404);
+assert.equal((await request(`/api/files/${html.id}`)).status, 404);
 assert.equal(
   (
     await write(
@@ -297,5 +330,5 @@ const unauthenticated = await fetch(base + `${projectPath}/components`, {
 });
 assert.ok([401, 307].includes(unauthenticated.status));
 console.log(
-  "Project API fixture passed: project order, selection/quantity, persistence, stale conflict, stock validation, owner scope and unauthenticated write rejection.",
+  "Project API fixture passed: private attachments, project order, selection/quantity, persistence, stale conflict, stock validation, owner scope and unauthenticated write rejection.",
 );

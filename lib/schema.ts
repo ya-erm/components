@@ -41,6 +41,10 @@ export const attachmentSchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type Attachment = z.infer<typeof attachmentSchema>;
+export const attachmentsSchema = z.array(attachmentSchema).max(MAX_ATTACHMENTS).refine(
+  (files) => new Set(files.map((file) => file.id)).size === files.length,
+  "Повторяющиеся записи",
+);
 export const attachmentUploadSchema = attachmentSchema
   .pick({ name: true, size: true, contentType: true })
   .extend({ contentType: z.string().min(1).max(200).default("application/octet-stream") })
@@ -138,6 +142,7 @@ export const projectSchema = z.object({
   id: identifier,
   name: z.string().trim().min(1, "Укажите название проекта").max(200),
   description: optionalText(20000),
+  attachments: attachmentsSchema.optional(),
   componentOrder: z
     .array(identifier)
     .max(10000)
@@ -251,7 +256,7 @@ export type Shipment = z.infer<typeof shipmentSchema>;
 export type Logistics = z.infer<typeof logisticsSchema>;
 
 export const componentFieldsSchema = z.object({
-  attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).default([]),
+  attachments: attachmentsSchema.default([]),
   name: z
     .string({ required_error: "Укажите название" })
     .trim()
@@ -330,7 +335,6 @@ export const componentDataSchema = componentFieldsSchema
     for (const field of [
       "inventory",
       "comments",
-      "attachments",
       "history",
       "purchases",
       "usages",

@@ -19,6 +19,7 @@ import {
   type Project,
   hasInventoryStatus,
   componentDataSchema,
+  projectSchema,
 } from "@/lib/schema";
 import {
   type Catalog,
@@ -178,8 +179,12 @@ export async function getLogistics(ownerId: string): Promise<Logistics> {
 
 export async function saveProject(
   ownerId: string,
-  project: Project,
+  project: Pick<Project, "id"> & Partial<Project>,
   create: boolean,
+  { partial = false, expectedAttachments }: {
+    partial?: boolean;
+    expectedAttachments?: Project["attachments"];
+  } = {},
 ): Promise<Project | null> {
   return mutateProjectCatalog(ownerId, (catalog) => {
     const index = catalog.projects.findIndex(
@@ -188,14 +193,26 @@ export async function saveProject(
     if (create && index !== -1)
       throw new CatalogValidationError("Проект уже существует");
     if (!create && index === -1) return null;
-    // Only the dedicated ordering endpoint may change this metadata.
+    const current = catalog.projects[index];
+    if (current && project.attachments !== undefined && expectedAttachments !== undefined) {
+      const currentAttachments = JSON.stringify(current.attachments ?? []);
+      if (currentAttachments !== JSON.stringify(expectedAttachments) &&
+          currentAttachments !== JSON.stringify(project.attachments)) {
+        throw new ProjectConflictError("Файлы проекта изменились. Обновите страницу перед сохранением.");
+      }
+    }
+    // Only the dedicated ordering endpoint may change the component order.
     const { componentOrder: _ignored, ...details } = project;
-    const saved = {
+    const parsed = projectSchema.safeParse({
+      ...(partial ? current : undefined),
       ...details,
-      ...(!create && catalog.projects[index].componentOrder
-        ? { componentOrder: catalog.projects[index].componentOrder }
+      ...(current?.componentOrder ? { componentOrder: current.componentOrder } : {}),
+      ...(details.attachments === undefined && current?.attachments !== undefined
+        ? { attachments: current.attachments }
         : {}),
-    };
+    });
+    if (!parsed.success) throw new CatalogValidationError(parsed.error.issues[0].message);
+    const saved = parsed.data;
     if (create) catalog.projects.push(saved);
     else catalog.projects[index] = saved;
     return saved;
