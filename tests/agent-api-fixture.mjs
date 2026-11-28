@@ -111,7 +111,7 @@ assert.equal((await write(path, { data: { nonexistent: true } })).status, 400);
 assert.equal((await write(path, { data: { name: "" } })).status, 400);
 const attachments = [];
 const fileBytes = Buffer.from([0, 255, 128, 65, 10]);
-for (const name of ["Чертёж.pdf", "part.step", "model.stl", "project.webcad.json", "sources.zip"]) {
+for (const name of ["Чертёж.pdf", "part.step", "model.stl", "project.webcad.json", "sources.zip", "guide.HTM"]) {
   const body = new FormData();
   body.append("file", new Blob([fileBytes], { type: "application/octet-stream" }), name);
   const uploaded = await api("/api/files", { method: "POST", body });
@@ -150,7 +150,7 @@ assert.equal((await write(path, { data: { attachments } })).status, 200);
 assert.deepEqual((await read(path)).data.attachments, attachments);
 const componentHtml = await (await session(`/components/${component.id}`)).text();
 assert.ok(componentHtml.includes("Прикрепить файлы"));
-for (const name of ["Чертёж.pdf", "part.step", "model.stl", "project.webcad.json", "20MB-model.stl"])
+for (const name of ["Чертёж.pdf", "part.step", "model.stl", "project.webcad.json", "20MB-model.stl", "guide.HTM"])
   assert.ok(componentHtml.includes(`Посмотреть: ${name}`));
 assert.ok(!componentHtml.includes("Посмотреть: sources.zip"));
 assert.ok(componentHtml.includes("Есть 3D-модели"));
@@ -176,6 +176,17 @@ assert.ok(previewedPdf.headers.get("content-disposition").startsWith("inline;"))
 assert.ok(previewedPdf.headers.get("content-disposition").includes(encodeURIComponent(pdf.name)));
 assert.deepEqual(Buffer.from(await previewedPdf.arrayBuffer()), fileBytes);
 assert.equal((await fetch(`${base}${pdfPath}?${query}`, { redirect: "manual" })).status, 401);
+
+const htmlFile = attachments.find((file) => file.name === "guide.HTM");
+const htmlPreviewPath = `/files/${htmlFile.id}/preview?name=guide.HTM`;
+assert.ok(componentHtml.includes(htmlPreviewPath));
+const htmlPreviewPage = await session(htmlPreviewPath);
+assert.equal(htmlPreviewPage.status, 200);
+assert.ok((await htmlPreviewPage.text()).includes("Предпросмотр HTML"));
+const htmlAnonymous = await fetch(base + htmlPreviewPath, { redirect: "manual" });
+assert.equal(htmlAnonymous.status, 307);
+assert.equal(new URL(htmlAnonymous.headers.get("location"), base).pathname, "/login");
+
 assert.equal((await api("/api/files/not-a-uuid")).status, 404);
 assert.equal((await fetch(base + `/api/files/${attachments[0].id}`, { redirect: "manual" })).status, 401);
 const oversized = new FormData();

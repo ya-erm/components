@@ -147,7 +147,7 @@ export function ComponentCard({
     </Link>
   );
   // The preview button is a sibling of the card link/selection button.
-  return <div className="relative min-w-0">{card}<ModelBadge files={item.data.attachments} compact={compact} name={item.data.name} /></div>;
+  return <div className="relative isolate min-w-0">{card}<ModelBadge files={item.data.attachments} compact={compact} name={item.data.name} /></div>;
 }
 
 export function NoImageIcon({ className }: { className?: string }) {
