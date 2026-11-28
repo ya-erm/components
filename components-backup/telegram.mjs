@@ -52,10 +52,10 @@ export class Telegram {
     return this.upload("sendDocument", { chat_id: this.config.chatId, caption }, [{ field: "document", path }]);
   }
 
-  async documents(archives, caption, photoFileId, { silent = false } = {}) {
+  async documents(archives, caption, fileIds = {}, { silent = false } = {}) {
     const files = [];
     const media = archives.map((archive, index) => {
-      const reused = archive.group === "photos" && photoFileId;
+      const reused = fileIds[archive.group];
       if (!reused) files.push({ field: archive.group, path: archive.path });
       return { type: "document", media: reused || `attach://${archive.group}`,
         ...(index === 0 ? { caption } : {}) };

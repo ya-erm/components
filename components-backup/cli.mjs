@@ -4,7 +4,7 @@ import { mkdir, rm, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { initEnv, settings } from "./config.mjs";
-import { createBackup, extractVerified, restore, loadBackup } from "./storage.mjs";
+import { createBackup, extractVerified, restore, loadBackup, verifyArchiveSet } from "./storage.mjs";
 import { Telegram, assertRecipient } from "./telegram.mjs";
 import { deliverBackup, lock, runBot } from "./service.mjs";
 
@@ -19,7 +19,7 @@ try {
     console.log("components-backup/.env создан (0600), секреты не выводятся");
   } else if (["verify", "restore"].includes(command)) {
     if (!args[0]) throw new Error("Укажите путь к .tar.gz");
-    if (command === "verify" && (args.length > 2 || args.some((v) => v.startsWith("--")))) throw new Error("verify принимает один архив или пару data.tar.gz photos.tar.gz");
+    if (command === "verify" && (args.length > 3 || args.some((v) => v.startsWith("--")))) throw new Error("verify принимает один архив или полный комплект data.tar.gz photos.tar.gz attachments.tar.gz (для старого формата — два архива)");
     const temporaryRoot = await mkdtemp(join(tmpdir(), "components-restore-"));
     try {
       const checked = [];
@@ -28,11 +28,9 @@ try {
         checked.push(item);
         console.log(`Проверено: ${item.manifest.objects.length} объектов, группа ${item.manifest.group ?? "all"}`);
       }
-      if (checked.length === 2) {
-        const [a, b] = checked.map((c) => c.manifest);
-        if (new Set([a.group, b.group]).size !== 2 || ![a.group, b.group].every((v) => ["data", "photos"].includes(v)) ||
-            a.bucket !== b.bucket || a.photosFingerprint !== b.photosFingerprint) throw new Error("Архивы не образуют один комплект данных и фотографий");
-        console.log("Архивы совместимы: набор фотографий совпадает");
+      if (checked.length > 1) {
+        verifyArchiveSet(checked.map((c) => c.manifest));
+        console.log("Архивы совместимы: комплект полный, содержимое совпадает");
       }
       const { directory, manifest } = checked[0];
       if (command === "restore") {
@@ -70,7 +68,7 @@ try {
         const backup = command === "send" ? await loadBackup(resolve(args[0])) : await createBackup(s3, config);
         console.log(`Готово: ${backup.directory}`);
         for (const archive of backup.archives) console.log(`${archive.name}: ${archive.size} байт`);
-        if (command === "send" || args.includes("--send")) { await deliverBackup(backup, config, telegram); console.log("Альбом с обоими архивами отправлен"); }
+        if (command === "send" || args.includes("--send")) { await deliverBackup(backup, config, telegram); console.log(`Альбом отправлен, архивов: ${backup.archives.length}`); }
       } else {
         const controller = new AbortController();
         for (const name of ["SIGINT", "SIGTERM"]) process.once(name, () => controller.abort());
@@ -78,7 +76,7 @@ try {
       }
     }
   } else {
-    console.log("Команды: init-env CHAT_ID | discover | once [--send] | send BACKUP_DIRECTORY | bot | use-local-api | verify ARCHIVE [PHOTOS_ARCHIVE] | restore ARCHIVE --target-bucket NAME --write [--allow-original]");
+    console.log("Команды: init-env CHAT_ID | discover | once [--send] | send BACKUP_DIRECTORY | bot | use-local-api | verify ARCHIVE [PHOTOS_ARCHIVE ATTACHMENTS_ARCHIVE] | restore ARCHIVE --target-bucket NAME --write [--allow-original]");
     if (command) process.exitCode = 1;
   }
 } catch (error) {

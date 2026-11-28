@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { Readable } from "node:stream";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import * as tar from "tar";
-import { createBackup, extractVerified, listObjects, prune, restore, snapshot, verifyDirectory, loadBackup } from "../storage.mjs";
+import { createBackup, extractVerified, listObjects, prune, restore, snapshot, verifyDirectory, loadBackup, verifyArchiveSet } from "../storage.mjs";
 import { authorized, Telegram, TelegramError } from "../telegram.mjs";
 import { deliverBackup, lock, scheduleDue, runBot, rememberSuccessfulDelivery, scheduledBackupNeeded } from "../service.mjs";
 import { createServer } from "node:http";
@@ -46,19 +46,22 @@ async function temporary(t) {
 }
 
 function albumMessages() {
-  return ["data-file", "photo-file"].map((file_id, index) => ({ message_id: index + 1, media_group_id: "test-group", document: { file_id } }));
+  return ["data-file", "photo-file", "attachment-file"].map((file_id, index) => ({ message_id: index + 1, media_group_id: "test-group", document: { file_id } }));
 }
 
-test("оба архива восстанавливают все байты, ключи и метаданные, включая опасные имена S3", async (t) => {
+test("три архива восстанавливают все байты, ключи и метаданные, включая опасные имена S3", async (t) => {
   const dataDir = await temporary(t);
-  const initial = { "users/index.json": "{\"users\":1}", "users/u/catalog.json": "{\"a\":2}", "public/images/u/фото.png": Buffer.from([0, 1, 128, 255]), "../escape": "private", "folder/": "" };
+  const initial = { "users/index.json": "{\"users\":1}", "users/u/catalog.json": "{\"a\":2}", "public/images/u/фото.png": Buffer.from([0, 1, 128, 255]), "users/u/files/model": Buffer.from([255, 7, 0, 128]), "../escape": "private", "folder/": "" };
   const source = memoryS3(initial, 2);
   const backup = await createBackup(source, { bucket: "source", dataDir });
   const target = memoryS3({});
+  assert.deepEqual(backup.archives.map((a) => a.name), ["data.tar.gz", "photos.tar.gz", "attachments.tar.gz"]);
   for (const archive of backup.archives) {
     const checked = await extractVerified(archive.path, dataDir);
     assert.equal(checked.manifest.group, archive.group);
     assert.equal(checked.manifest.photosFingerprint, backup.photosFingerprint);
+    assert.equal(checked.manifest.attachmentsFingerprint, backup.attachmentsFingerprint);
+    assert.equal(checked.manifest.objects.some((o) => o.key === "users/u/files/model"), archive.group === "attachments");
     await restore(target, checked.directory, "target");
   }
   assert.equal(target.objects.size, source.objects.size);
@@ -97,6 +100,55 @@ test("повторная отправка читает полный готовы
   assert.equal((await readdir(first.directory)).some((name) => name.startsWith(".verify-")), false);
 });
 
+test("фото и вложения совместимы независимо, неполный или смешанный комплект отклоняется", async (t) => {
+  const dataDir = await temporary(t);
+  const source = memoryS3({ "users/u/catalog.json": "{}", "public/images/u/a": "photo", "users/u/files/model": "first model" });
+  const first = await createBackup(source, { bucket: "bucket", dataDir });
+  source.objects.get("users/u/files/model").body = Buffer.from("second model");
+  const second = await createBackup(source, { bucket: "bucket", dataDir });
+  // Неизменившееся фото может быть переиспользовано из прежнего альбома.
+  await writeFile(join(second.directory, "photos.tar.gz"), await readFile(join(first.directory, "photos.tar.gz")));
+  const loaded = await loadBackup(second.directory);
+  assert.equal(loaded.attachmentsFingerprint, second.attachmentsFingerprint);
+  assert.equal(loaded.archives.length, 3);
+  const manifests = [];
+  for (const archive of loaded.archives) manifests.push((await extractVerified(archive.path, dataDir)).manifest);
+  assert.doesNotThrow(() => verifyArchiveSet([...manifests].reverse()));
+  assert.throws(() => verifyArchiveSet(manifests.slice(0, 2)), /полный комплект/);
+  assert.throws(() => verifyArchiveSet([manifests[0], manifests[1], manifests[1]]), /полный комплект/);
+  assert.throws(() => verifyArchiveSet(manifests.map((m, i) => i === 2 ? { ...m, bucket: "other" } : m)), /полный комплект/);
+  await writeFile(join(second.directory, "attachments.tar.gz"), await readFile(join(first.directory, "attachments.tar.gz")));
+  await assert.rejects(loadBackup(second.directory), /вложений отличается/);
+  await rm(join(first.directory, "attachments.tar.gz"));
+  await assert.rejects(loadBackup(first.directory), /ENOENT/);
+  assert.equal((await readdir(first.directory)).some((name) => name.startsWith(".verify-")), false);
+});
+
+test("старый комплект из двух архивов проверяется, отправляется и восстанавливается вместе с вложениями", async (t) => {
+  const dataDir = await temporary(t);
+  const sourceDir = join(dataDir, "snapshot");
+  const source = memoryS3({ "users/u/catalog.json": "{}", "users/u/files/model": "legacy attachment", "public/images/u/a": "photo" });
+  const manifest = await snapshot(source, "bucket", sourceDir);
+  const photos = manifest.objects.filter((o) => o.key.startsWith("public/images/"));
+  const photosFingerprint = createHash("sha256").update(JSON.stringify(photos.map(({ file, ...o }) => o), null, 2) + "\n").digest("hex");
+  for (const group of ["data", "photos"]) {
+    const dir = join(dataDir, group);
+    await mkdir(join(dir, "objects"), { recursive: true });
+    const objects = manifest.objects.filter((o) => o.key.startsWith("public/images/") === (group === "photos"));
+    for (const o of objects) await writeFile(join(dir, o.file), await readFile(join(sourceDir, o.file)));
+    await writeFile(join(dir, "manifest.json"), JSON.stringify({ ...manifest, group, photosFingerprint, objects }));
+    await tar.c({ cwd: dir, file: join(dataDir, `${group}.tar.gz`), gzip: true }, ["manifest.json", "objects"]);
+  }
+  const loaded = await loadBackup(dataDir);
+  assert.equal(loaded.archives.length, 2);
+  const target = memoryS3({});
+  for (const archive of loaded.archives) await restore(target, (await extractVerified(archive.path, dataDir)).directory, "target");
+  assert.deepEqual(target.objects, source.objects);
+  await deliverBackup(loaded, { dataDir, bucket: "bucket", keep: 14, telegram: { token: "fake", base: "local", chatId: "123", adminId: "123" } }, {
+    async documents(archives) { assert.equal(archives.length, 2); return albumMessages().slice(0, 2); },
+  });
+});
+
 test("неполная пагинация и пустой бакет завершаются ошибкой", async (t) => {
   await assert.rejects(listObjects({ send: async () => ({ IsTruncated: true }) }, "bucket"), /пагинация/);
   await assert.rejects(snapshot(memoryS3({}), "bucket", await temporary(t)), /пуст/);
@@ -133,11 +185,13 @@ test("распаковка отклоняет неожиданные файлы 
   assert.deepEqual((await readdir(path)).filter((f) => f.startsWith(".verify-")), []);
 });
 
-test("пустой архив фото допустим, когда фотографий ещё нет", async (t) => {
+test("пустые архивы фото и вложений допустимы", async (t) => {
   const dataDir = await temporary(t);
   const backup = await createBackup(memoryS3({ "users/index.json": "{}" }), { dataDir, bucket: "bucket" });
   const photo = backup.archives.find((a) => a.group === "photos");
   assert.equal((await extractVerified(photo.path, dataDir)).manifest.objects.length, 0);
+  const attachments = backup.archives.find((a) => a.group === "attachments");
+  assert.equal((await extractVerified(attachments.path, dataDir)).manifest.objects.length, 0);
 });
 
 test("архив фото переиспользуется только для того же содержимого и бота", async (t) => {
@@ -145,17 +199,35 @@ test("архив фото переиспользуется только для �
   const s3 = memoryS3({ "users/index.json": "{}", "public/images/a": "image" });
   const config = { dataDir, bucket: "bucket", keep: 14, telegram: { token: "fake-token", base: "http://127.0.0.1:8081", chatId: "123", adminId: "123" } };
   const calls = [];
-  const telegram = { async documents(_archives, _caption, photoFileId) { calls.push(photoFileId); return albumMessages(); } };
+  const telegram = { async documents(_archives, _caption, fileIds) { calls.push(fileIds); return albumMessages(); } };
   await deliverBackup(await createBackup(s3, config), config, telegram);
   s3.objects.get("users/index.json").body = Buffer.from("{\"new\":true}");
   await deliverBackup(await createBackup(s3, config), config, telegram);
-  assert.deepEqual(calls, [undefined, "photo-file"]);
+  assert.deepEqual(calls, [{}, { photos: "photo-file", attachments: "attachment-file" }]);
   s3.objects.get("public/images/a").body = Buffer.from("different image");
   await deliverBackup(await createBackup(s3, config), config, telegram);
-  assert.equal(calls.at(-1), undefined);
+  assert.deepEqual(calls.at(-1), { attachments: "attachment-file" });
   config.telegram.token = "other-bot";
   await deliverBackup(await createBackup(s3, config), config, telegram);
-  assert.equal(calls.at(-1), undefined);
+  assert.deepEqual(calls.at(-1), {});
+});
+
+test("вложения переиспользуются отдельно и старый кеш фото не смешивается с новым форматом", async (t) => {
+  const dataDir = await temporary(t);
+  const config = { dataDir, bucket: "bucket", keep: 14, telegram: { token: "fake", base: "local", chatId: "123", adminId: "123" } };
+  const source = memoryS3({ "users/u/files/model": "model", "public/images/a": "photo" });
+  const first = await createBackup(source, config);
+  const account = createHash("sha256").update(`${config.telegram.token}:${config.telegram.base}`).digest("hex");
+  await writeFile(join(dataDir, "telegram-photos.json"), JSON.stringify({ account, fingerprint: first.photosFingerprint, fileId: "legacy-photo" }));
+  const calls = [];
+  const telegram = { async documents(_archives, _caption, fileIds) { calls.push(fileIds); return albumMessages(); } };
+  await deliverBackup(first, config, telegram);
+  assert.deepEqual(calls[0], {});
+  source.objects.get("users/u/files/model").body = Buffer.from("updated model");
+  await deliverBackup(await createBackup(source, config), config, telegram);
+  assert.deepEqual(calls[1], { photos: "photo-file" });
+  await deliverBackup(await createBackup(source, config), config, telegram);
+  assert.deepEqual(calls[2], { photos: "photo-file", attachments: "attachment-file" });
 });
 
 test("ошибка альбома не помечает комплект отправленным", async (t) => {
@@ -164,6 +236,8 @@ test("ошибка альбома не помечает комплект отп�
   const backup = await createBackup(memoryS3({ a: "data", "public/images/a": "photo" }), config);
   await assert.rejects(deliverBackup(backup, config, { async documents() { throw new TelegramError(500); } }), /500/);
   await assert.rejects(deliverBackup(backup, config, { async documents() { return albumMessages().slice(0, 1); } }), /полный альбом/);
+  await assert.rejects(deliverBackup(backup, config, { async documents() { return albumMessages().slice(0, 2); } }), /полный альбом/);
+  await assert.rejects(deliverBackup(backup, config, { async documents() { return albumMessages().map((item, i) => i === 2 ? { ...item, media_group_id: "other" } : item); } }), /полный альбом/);
   assert.equal((await readdir(backup.directory)).includes("sent.json"), false);
   assert.equal((await readdir(dataDir)).includes("last-success.json"), false);
 });
@@ -190,6 +264,8 @@ test("без изменений отправка нужна через семь 
   assert.equal(scheduledBackupNeeded(objects, last, { ...config, telegram: { ...config.telegram, chatId: "456" } }, beforeWeek), true);
   assert.equal(scheduledBackupNeeded(objects, null, config, beforeWeek), true);
   assert.equal(scheduledBackupNeeded(objects, { ...last, sentAt: "invalid" }, config, beforeWeek), true);
+  const oldScope = createHash("sha256").update(JSON.stringify([config.bucket, config.telegram.token, config.telegram.base, config.telegram.chatId])).digest("hex");
+  assert.equal(scheduledBackupNeeded(objects, { ...last, scope: oldScope }, config, beforeWeek), true, "обновление формата требует нового полного комплекта");
 });
 
 test("истёкший file_id повторно загружает полный альбом", async (t) => {
@@ -200,10 +276,10 @@ test("истёкший file_id повторно загружает полный 
   const calls = [];
   await deliverBackup(await createBackup(s3, config), config, { async documents(_archives, _caption, fileId) {
     calls.push(fileId);
-    if (fileId) throw new TelegramError(400);
+    if (fileId && Object.keys(fileId).length) throw new TelegramError(400);
     return albumMessages();
   } });
-  assert.deepEqual(calls, ["photo-file", undefined]);
+  assert.deepEqual(calls, [{ photos: "photo-file", attachments: "attachment-file" }, undefined]);
 });
 
 test("retention удаляет только лишние завершённые комплекты", async (t) => {
@@ -278,13 +354,15 @@ test("настройки не отправляют секрет по незаш�
   assert.throws(() => settings({ ...env, TELEGRAM_API_BASE: "https://api.telegram.org", TELEGRAM_MAX_FILE_MB: "1900" }), /лимит/);
 });
 
-test("два архива отправляются одним mediaGroup, повторные фото передаются как file_id", async (t) => {
+test("три архива отправляются одним mediaGroup, повторные фото и вложения передаются как file_id", async (t) => {
   const dir = await temporary(t);
-  const archives = ["data", "photos"].map((group) => ({ group, path: join(dir, `${group}.tar.gz`) }));
+  const archives = ["data", "photos", "attachments"].map((group) => ({ group, path: join(dir, `${group}.tar.gz`) }));
   const data = Buffer.from("unique-data-bytes");
   const photos = Buffer.from("unique-photos-bytes");
+  const attachments = Buffer.from("unique-attachments-bytes");
   await writeFile(archives[0].path, data);
   await writeFile(archives[1].path, photos);
+  await writeFile(archives[2].path, attachments);
   const requests = [];
   const server = createServer(async (req, res) => {
     const chunks = [];
@@ -299,7 +377,7 @@ test("два архива отправляются одним mediaGroup, пов
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const client = new Telegram({ base: `http://127.0.0.1:${server.address().port}`, token: "test", chatId: "123", maxFileBytes: 100 });
   await client.documents(archives, "Общая подпись");
-  await client.documents(archives, "Общая подпись", "cached-photo-file", { silent: true });
+  await client.documents(archives, "Общая подпись", { photos: "cached-photo-file", attachments: "cached-attachment-file" }, { silent: true });
   assert.equal(requests.length, 2);
   for (const request of requests) {
     assert.equal(request.path, "/bottest/sendMediaGroup");
@@ -308,9 +386,12 @@ test("два архива отправляются одним mediaGroup, пов
     assert.equal(request.body.toString().split("Общая подпись").length - 1, 1);
   }
   assert.ok(requests[0].body.includes(photos));
+  assert.ok(requests[0].body.includes(attachments));
   assert.ok(requests[0].body.includes(Buffer.from('"media":"attach://photos"')));
   assert.equal(requests[1].body.includes(photos), false);
+  assert.equal(requests[1].body.includes(attachments), false);
   assert.ok(requests[1].body.includes(Buffer.from('"media":"cached-photo-file"')));
+  assert.ok(requests[1].body.includes(Buffer.from('"media":"cached-attachment-file"')));
   assert.ok(requests[0].body.includes(Buffer.from('name="disable_notification"\r\n\r\nfalse')));
   assert.ok(requests[1].body.includes(Buffer.from('name="disable_notification"\r\n\r\ntrue')));
 });
@@ -332,7 +413,7 @@ test("bot обрабатывает /backup, игнорирует посторо�
           { update_id: 2, message: { chat: { id: 123, type: "private" }, from: { id: 123 }, text: "/backup@TestBot" } },
         ];
         // Позволяем фоновой задаче работать, затем штатно останавливаем poller.
-        while (sent.length < 2) await new Promise((resolve) => setTimeout(resolve, 5));
+        while (sent.length < 3) await new Promise((resolve) => setTimeout(resolve, 5));
         controller.abort();
         throw new Error("aborted");
       }
@@ -341,7 +422,7 @@ test("bot обрабатывает /backup, игнорирует посторо�
     async message() { throw new Error("Не должно быть сообщений при успехе"); },
   };
   await runBot(memoryS3({ "users/index.json": "{}", "public/images/a": "png" }), config, telegram, controller.signal, () => {});
-  assert.equal(sent.length, 2);
+  assert.equal(sent.length, 3);
   assert.equal(JSON.parse(await readFile(join(dataDir, "bot-state.json"))).offset, 3);
 });
 
