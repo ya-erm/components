@@ -128,11 +128,3 @@ export function WebcadModelViewer({ files, initialFileId, onClose }: { files: At
   const selected = models.find((file) => file.id === selectedId) ?? models[0];
   return selected ? <PreviewDialog file={selected} models={models} onSelect={setSelectedId} onClose={onClose} /> : null;
 }
-
-export function WebcadPreview({ file, files, className }: { file: Attachment; files: Attachment[]; className: string }) {
-  const [open, setOpen] = useState(false);
-  return <>
-    <button type="button" className={className} onClick={() => setOpen(true)} title="Посмотреть" aria-label={`Посмотреть: ${file.name}`}>{file.name}</button>
-    {open ? <WebcadModelViewer files={files} initialFileId={file.id} onClose={() => setOpen(false)} /> : null}
-  </>;
-}

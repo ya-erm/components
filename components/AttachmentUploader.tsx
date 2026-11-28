@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { type Attachment, MAX_ATTACHMENTS, MAX_ATTACHMENT_SIZE } from "@/lib/schema";
 import type { ComponentDTO } from "@/lib/components-repo";
@@ -11,8 +11,8 @@ import { SortableList } from "./SortableList";
 import { Button } from "./ui/Button";
 import { disclosureHeadingClass } from "./ui/Field";
 import { AttachmentSectionHeader, attachmentSectionClass } from "./AttachmentSectionHeader";
-import { WebcadPreview } from "./WebcadPreview";
-import { AttachmentDownload } from "./AttachmentDownload";
+import { WebcadModelViewer } from "./WebcadPreview";
+import { AttachmentDownload, attachmentActionClass } from "./AttachmentDownload";
 
 const bytesPerKilobyte = 1024;
 const bytesPerMegabyte = bytesPerKilobyte ** 2;
@@ -38,6 +38,7 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
   const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [previewModelId, setPreviewModelId] = useState<string>();
   const busy = useRef(false);
   const [undo, setUndo] = useState<{ file: Attachment; index: number; persisted: boolean }[]>([]);
 
@@ -170,24 +171,36 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
       <SortableList items={value} compact disabled={uploading} label={label} getLabel={(file) => file.name} onReorder={(next) => void reorder(next)}>
         {(file, handle) => {
           const preview = isHtmlAttachment(file) ? "html" : isPdfAttachment(file) ? "pdf" : undefined;
+          const previewUrl = preview ? attachmentUrl(file, preview) : undefined;
+          const canPreview = previewUrl !== undefined || webcadFormat(file.name) !== null;
+          const previewControl = (children: ReactNode, className: string, label: string) => {
+            const props = { className, title: "Посмотреть", "aria-label": label };
+            return previewUrl
+              ? <a href={previewUrl} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+              : <button type="button" onClick={() => setPreviewModelId(file.id)} {...props}>{children}</button>;
+          };
           return (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2">
               {handle}
-              <div className="min-w-0 flex-1 basis-32 text-sm">
-                {preview ? (
-                  <a href={attachmentUrl(file, preview)} target="_blank" rel="noopener noreferrer" className={filenameClass}
-                    title="Посмотреть" aria-label={`Посмотреть: ${file.name}`}>{file.name}</a>
-                ) : webcadFormat(file.name) ? (
-                  <WebcadPreview file={file} files={value} className={filenameClass} />
-                ) : (
-                  <a href={attachmentUrl(file)} title={`Скачать ${file.name}`} className={filenameClass}>{file.name}</a>
-                )}{" "}
+              <div className="min-w-0 flex-1 text-sm">
+                {canPreview
+                  ? previewControl(file.name, filenameClass, `Посмотреть: ${file.name}`)
+                  : <a href={attachmentUrl(file)} title={`Скачать ${file.name}`} className={filenameClass}>{file.name}</a>}{" "}
                 <span className="ml-1 text-xs text-[var(--color-muted)]">{formatAttachmentSize(file.size)}</span>
               </div>
-              <AttachmentDownload file={file} />
-              <Button type="button" variant="ghost" className="size-10 shrink-0 !p-0 !text-red-500 hover:bg-red-500/10 hover:!text-red-600" disabled={uploading} aria-label={`Удалить файл ${file.name}`} title="Удалить файл" onClick={() => void remove(file)}>
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-[18px]"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
-              </Button>
+              <div className="flex shrink-0 items-center gap-0.5">
+                {canPreview ? previewControl(
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-[18px]">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" />
+                  </svg>,
+                  attachmentActionClass,
+                  `Открыть предпросмотр: ${file.name}`,
+                ) : null}
+                <AttachmentDownload file={file} />
+                <Button type="button" variant="ghost" className="size-10 shrink-0 !p-0 !text-red-500 hover:bg-red-500/10 hover:!text-red-600" disabled={uploading} aria-label={`Удалить файл ${file.name}`} title="Удалить файл" onClick={() => void remove(file)}>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-[18px]"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+                </Button>
+              </div>
             </div>
           );
         }}
@@ -195,6 +208,7 @@ export function AttachmentUploader({ value, savedValue = [], componentId, onPers
       <Button type="button" variant="secondary" disabled={uploading || value.length >= MAX_ATTACHMENTS} onClick={() => input.current?.click()}>{uploading ? "Сохраняем…" : "Прикрепить файлы"}</Button>
       </div>
     </details>
+    {previewModelId ? <WebcadModelViewer files={value} initialFileId={previewModelId} onClose={() => setPreviewModelId(undefined)} /> : null}
     {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
     {undo.length ? createPortal(<div className="pointer-events-none fixed inset-x-4 bottom-4 z-[60] flex justify-end pb-[env(safe-area-inset-bottom)]">
       <div className="pointer-events-auto flex max-w-md items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-lg">
